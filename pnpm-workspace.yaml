@@ -1,0 +1,8 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm bloque les scripts d'installation par défaut : on autorise au cas par cas
+allowBuilds:
+  sharp: false
+  unrs-resolver: false
