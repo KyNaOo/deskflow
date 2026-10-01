@@ -48,7 +48,7 @@ Créés par `bin/pnpm db:seed` dans l'organisation **Acme Corp** (`acme`), mot d
 | Service | URL | Rôle |
 |---|---|---|
 | `web` | http://localhost:3000 | Front Next.js |
-| `api` | http://localhost:3001 | API NestJS |
+| `api` | http://localhost:3001 | API NestJS — état de santé : http://localhost:3001/health |
 | `postgres` | `localhost:5432` | PostgreSQL 18 + pgvector (user / mdp / base : `deskflow`) |
 | `redis` | `localhost:6379` | Cache, pub/sub, files BullMQ |
 | `s3` | http://localhost:8333 | API S3 (SeaweedFS) — un `AccessDenied` dans le navigateur est **normal** : l'API exige des requêtes signées |
@@ -145,6 +145,7 @@ deskflow/
 ## Dépannage
 
 - **`port is already allocated`** : un autre projet utilise ce port → modifier la variable correspondante dans `.env` (ex. `MAILPIT_UI_PORT=8026`), puis `docker compose up -d`. Pour trouver le coupable : `docker ps --format '{{.Names}}\t{{.Ports}}' | grep 8025`.
+- **`api` reste en `unhealthy`** : `curl localhost:3001/health` indique quelle dépendance est `down` (en général la base : `docker compose ps postgres`).
 - **`web` inaccessible alors que l'api répond** : un service n'a pas pu démarrer et Compose a interrompu le lancement → `docker compose ps -a` pour voir lequel est resté en `Created`.
 - **Dépendances incohérentes après un `git pull`** : `bin/pnpm install`, puis `bin/pnpm db:deploy` si de nouvelles migrations sont arrivées.
 - **`Cannot find module '.../src/generated/prisma/...'`** : le client Prisma n'est pas généré (il n'est pas versionné) → `bin/pnpm db:generate`.
@@ -155,7 +156,8 @@ deskflow/
 - [x] Jalon 0 — Socle : monorepo, Docker Compose, apps api / web
 - [x] Jalon 0 — Prisma : schéma Tenant / User, première migration (+ pgvector), seed
 - [x] Jalon 0 — Config typée et validée au démarrage (`@nestjs/config` + zod)
-- [ ] Jalon 0 — `/health`, CI, hooks git
+- [x] Jalon 0 — Endpoint `/health` (`@nestjs/terminus`) + healthcheck Docker
+- [ ] Jalon 0 — CI, hooks git
 - [ ] Jalon 1 — Authentification et multi-tenant
 - [ ] Jalon 2 — Tickets et messages
 - [ ] Jalon 3 — Temps réel et pièces jointes
