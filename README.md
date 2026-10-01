@@ -21,11 +21,27 @@ cp .env.example .env
 # 2. Installer les dépendances (dans un conteneur)
 bin/pnpm install
 
-# 3. Lancer toute la stack
+# 3. Créer les tables et les données de démo
+bin/pnpm db:deploy
+bin/pnpm db:seed
+
+# 4. Lancer toute la stack
 docker compose up
 ```
 
+> ⚠️ Si `docker compose up` échoue avec `port is already allocated`, un autre projet occupe ce port : changez la variable correspondante dans `.env` (voir [Dépannage](#dépannage)). Tant qu'un service ne démarre pas, Compose interrompt le lancement et **les autres services (dont `web`) ne démarrent pas non plus**.
+
 C'est tout. Le code est monté dans les conteneurs : toute modification recharge automatiquement l'api et le front.
+
+### Comptes de démonstration
+
+Créés par `bin/pnpm db:seed` dans l'organisation **Acme Corp** (`acme`), mot de passe `password` :
+
+| Rôle | E-mail |
+|---|---|
+| Admin | `admin@acme.test` |
+| Agent | `agent@acme.test` |
+| Client | `client@acme.test` |
 
 ## Services
 
@@ -35,7 +51,8 @@ C'est tout. Le code est monté dans les conteneurs : toute modification recharge
 | `api` | http://localhost:3001 | API NestJS |
 | `postgres` | `localhost:5432` | PostgreSQL 18 + pgvector (user / mdp / base : `deskflow`) |
 | `redis` | `localhost:6379` | Cache, pub/sub, files BullMQ |
-| `s3` | http://localhost:8333 | Stockage objet compatible S3 (SeaweedFS) — admin : http://localhost:23646 |
+| `s3` | http://localhost:8333 | API S3 (SeaweedFS) — un `AccessDenied` dans le navigateur est **normal** : l'API exige des requêtes signées |
+| `s3` (admin) | http://localhost:23646 | Interface web de SeaweedFS (buckets, fichiers) |
 | `mailpit` | http://localhost:8025 | Boîte mail de dev : capture tous les e-mails envoyés |
 
 Un port est déjà pris sur votre machine ? Changez-le dans `.env` (`WEB_PORT`, `API_PORT`, `POSTGRES_PORT`, `MAILPIT_UI_PORT`…).
@@ -66,6 +83,14 @@ bin/pnpm build
 bin/pnpm --filter api test:watch
 bin/pnpm --filter api test:e2e
 
+# Base de données (Prisma)
+bin/pnpm db:migrate --name add_tickets   # après modif du schéma : crée + applique une migration
+bin/pnpm db:deploy                       # applique les migrations existantes (CI, prod, après un pull)
+bin/pnpm db:seed                         # (ré)insère les données de démo — idempotent
+bin/pnpm db:reset                        # ⚠️ vide la base, rejoue les migrations et le seed
+bin/pnpm db:generate                     # régénère le client typé (automatique après install)
+docker compose exec postgres psql -U deskflow   # console SQL
+
 # Stack Docker
 docker compose up -d                 # en arrière-plan
 docker compose logs -f api           # suivre les logs d'un service
@@ -83,6 +108,8 @@ docker compose build tools           # reconstruire l'image de dev (après modif
 deskflow/
 ├── apps/
 │   ├── api/              # NestJS (Vitest, oxlint)
+│   │   ├── prisma/       # schema.prisma, migrations SQL, seed
+│   │   └── src/prisma/   # PrismaService (injectable partout)
 │   └── web/              # Next.js App Router + Tailwind
 ├── packages/
 │   └── tsconfig/         # configs TypeScript partagées (strict)
@@ -98,18 +125,22 @@ deskflow/
 - **Tout dockerisé** : un nouveau développeur (ou la CI) n'a besoin que de Docker ; les versions de Node et pnpm sont figées dans l'image.
 - **pnpm workspaces + Turborepo** : types partagés entre front et back, tâches mises en cache.
 - **PostgreSQL + pgvector** plutôt qu'une base vectorielle dédiée : relationnel et embeddings dans la même base, les mêmes transactions et la même isolation par tenant.
+- **Prisma** : schéma unique, migrations SQL versionnées et client entièrement typé. Tables et colonnes en `snake_case` (`@map`) pour garder un SQL brut lisible là où Prisma ne suffit pas (recherche vectorielle, plein texte, analytics).
 - **SeaweedFS** en local pour le stockage objet : API S3, donc le même code fonctionne avec S3 / R2 en production (MinIO ne publie plus d'images Docker).
 
 ## Dépannage
 
-- **`port is already allocated`** : un autre projet utilise ce port → modifier la variable correspondante dans `.env`.
-- **Dépendances incohérentes après un `git pull`** : `bin/pnpm install`.
+- **`port is already allocated`** : un autre projet utilise ce port → modifier la variable correspondante dans `.env` (ex. `MAILPIT_UI_PORT=8026`), puis `docker compose up -d`. Pour trouver le coupable : `docker ps --format '{{.Names}}\t{{.Ports}}' | grep 8025`.
+- **`web` inaccessible alors que l'api répond** : un service n'a pas pu démarrer et Compose a interrompu le lancement → `docker compose ps -a` pour voir lequel est resté en `Created`.
+- **Dépendances incohérentes après un `git pull`** : `bin/pnpm install`, puis `bin/pnpm db:deploy` si de nouvelles migrations sont arrivées.
+- **`Cannot find module '.../src/generated/prisma/...'`** : le client Prisma n'est pas généré (il n'est pas versionné) → `bin/pnpm db:generate`.
 - **Repartir de zéro** : `docker compose down -v && rm -rf node_modules apps/*/node_modules && bin/pnpm install`.
 
 ## Feuille de route
 
 - [x] Jalon 0 — Socle : monorepo, Docker Compose, apps api / web
-- [ ] Jalon 0 — Prisma, config validée, `/health`, CI, hooks git
+- [x] Jalon 0 — Prisma : schéma Tenant / User, première migration (+ pgvector), seed
+- [ ] Jalon 0 — Config validée, `/health`, CI, hooks git
 - [ ] Jalon 1 — Authentification et multi-tenant
 - [ ] Jalon 2 — Tickets et messages
 - [ ] Jalon 3 — Temps réel et pièces jointes

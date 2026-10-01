@@ -1,8 +1,14 @@
+# Store pnpm dans un volume Docker (voir docker-compose.yml)
+storeDir: /pnpm/store
+
 packages:
   - "apps/*"
   - "packages/*"
 
 # pnpm bloque les scripts d'installation par défaut : on autorise au cas par cas
 allowBuilds:
+  "@prisma/engines": true
+  esbuild: true
+  prisma: true
   sharp: false
   unrs-resolver: false
