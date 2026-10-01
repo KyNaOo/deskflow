@@ -1,12 +1,14 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
+import type { Env } from '../config/env.js';
 import { PrismaClient } from '../generated/prisma/client.js';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  constructor() {
-    // TODO(config) : lire DATABASE_URL depuis la config validée par zod
-    super({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+  constructor(config: ConfigService<Env, true>) {
+    const connectionString = config.get('DATABASE_URL', { infer: true });
+    super({ adapter: new PrismaPg({ connectionString }) });
   }
 
   async onModuleInit() {
