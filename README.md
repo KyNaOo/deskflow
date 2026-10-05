@@ -57,6 +57,20 @@ Créés par `bin/pnpm db:seed` dans l'organisation **Acme Corp** (`acme`), mot d
 
 Un port est déjà pris sur votre machine ? Changez-le dans `.env` (`WEB_PORT`, `API_PORT`, `POSTGRES_PORT`, `MAILPIT_UI_PORT`…).
 
+## Configuration
+
+Les variables d'environnement sont définies dans `.env` (modèle : `.env.example`) et injectées dans les conteneurs par Docker Compose.
+
+Côté API, elles sont **validées au démarrage** par un schéma zod (`apps/api/src/config/env.ts`) : si une variable manque ou est invalide, l'API refuse de démarrer avec un message explicite. Dans le code, elles se lisent de façon typée :
+
+```ts
+constructor(config: ConfigService<Env, true>) {
+  const url = config.get('DATABASE_URL', { infer: true }); // string, jamais undefined
+}
+```
+
+Nouvelle variable → l'ajouter à `.env.example` **et** au schéma `envSchema`.
+
 ## Commandes utiles
 
 Deux scripts dans `bin/` remplacent les outils locaux :
@@ -140,7 +154,8 @@ deskflow/
 
 - [x] Jalon 0 — Socle : monorepo, Docker Compose, apps api / web
 - [x] Jalon 0 — Prisma : schéma Tenant / User, première migration (+ pgvector), seed
-- [ ] Jalon 0 — Config validée, `/health`, CI, hooks git
+- [x] Jalon 0 — Config typée et validée au démarrage (`@nestjs/config` + zod)
+- [ ] Jalon 0 — `/health`, CI, hooks git
 - [ ] Jalon 1 — Authentification et multi-tenant
 - [ ] Jalon 2 — Tickets et messages
 - [ ] Jalon 3 — Temps réel et pièces jointes

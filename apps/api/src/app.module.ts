@@ -1,10 +1,20 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { validateEnv } from './config/env.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // Les variables sont injectées par Docker Compose : pas de lecture de fichier .env
+      ignoreEnvFile: true,
+      validate: validateEnv,
+    }),
+    PrismaModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
