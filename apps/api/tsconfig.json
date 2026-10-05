@@ -1,0 +1,8 @@
+{
+  "extends": "@deskflow/tsconfig/nestjs.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "types": ["vitest/globals", "node"]
+  }
+}

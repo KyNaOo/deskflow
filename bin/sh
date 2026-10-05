@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Ouvre un shell (ou lance une commande) dans le conteneur `tools`.
+# Exemples : bin/sh · bin/sh npx prisma studio
+set -e
+cd "$(dirname "$0")/.."
+if [ "$#" -eq 0 ]; then set -- bash; fi
+exec docker compose run --rm tools "$@"

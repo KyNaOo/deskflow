@@ -1,0 +1,101 @@
+# Environnement de développement complet : `docker compose up`
+# Rien d'autre que Docker n'est requis sur l'hôte.
+
+x-node-dev: &node-dev
+  build:
+    context: .
+    dockerfile: docker/dev.Dockerfile
+  image: deskflow-node-dev
+  init: true # PID 1 propre : relaie les signaux, supprime les zombies
+  env_file:
+    - path: .env
+      required: false
+  volumes:
+    - .:/app
+    - pnpm-store:/pnpm/store
+
+services:
+  # Conteneur utilitaire pour pnpm / CLIs : `bin/pnpm …` ou `bin/sh`
+  tools:
+    <<: *node-dev
+    profiles: [tools]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  api:
+    <<: *node-dev
+    command: ["pnpm", "--filter", "api", "start:dev"]
+    environment:
+      PORT: 3001
+    ports:
+      - "${API_PORT:-3001}:3001"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  web:
+    <<: *node-dev
+    command: ["pnpm", "--filter", "web", "dev"]
+    environment:
+      PORT: 3000
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-deskflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deskflow}
+      POSTGRES_DB: ${POSTGRES_DB:-deskflow}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Postgres 18 : les données vivent dans /var/lib/postgresql/<version>/
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Stockage objet compatible S3 (remplace MinIO, dont les images ne sont plus publiées)
+  s3:
+    image: chrislusf/seaweedfs:latest
+    command: ["mini", "-dir=/data", "-bucket=${S3_BUCKET:-attachments}"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-deskflow}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-deskflow-secret}
+    ports:
+      - "${S3_PORT:-8333}:8333" # API S3
+      - "${S3_ADMIN_PORT:-23646}:23646" # Admin UI
+    volumes:
+      - s3-data:/data
+
+  # Capture tous les e-mails envoyés en dev : UI sur http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+
+volumes:
+  postgres-data:
+  redis-data:
+  s3-data:
+  pnpm-store:
