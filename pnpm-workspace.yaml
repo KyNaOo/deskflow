@@ -1,6 +1,3 @@
-# Store pnpm dans un volume Docker (voir docker-compose.yml)
-storeDir: /pnpm/store
-
 packages:
   - "apps/*"
   - "packages/*"

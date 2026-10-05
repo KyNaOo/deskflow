@@ -8,7 +8,9 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl git ca-certificates procps \
   && rm -rf /var/lib/apt/lists/*
 
+# Store pnpm dans un volume Docker (voir docker-compose.yml)
 ENV PNPM_HOME=/pnpm \
+    pnpm_config_store_dir=/pnpm/store \
     NEXT_TELEMETRY_DISABLED=1 \
     TURBO_TELEMETRY_DISABLED=1
 ENV PATH=$PNPM_HOME:$PATH

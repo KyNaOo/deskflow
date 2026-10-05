@@ -1,8 +1,10 @@
 # Deskflow
 
+[![CI](https://github.com/KyNaOo/deskflow/actions/workflows/ci.yml/badge.svg)](https://github.com/KyNaOo/deskflow/actions/workflows/ci.yml)
+
 Help desk SaaS multi-tenant avec assistant IA : tickets, chat temps réel entre clients et agents, suggestions de réponse basées sur la base de connaissances de chaque organisation (RAG).
 
-> 🚧 Projet en cours de construction — Jalon 0 (socle).
+> 🚧 Projet en cours de construction — Jalon 0 (socle) terminé, prochaine étape : authentification et multi-tenant.
 
 **Stack :** TypeScript · NestJS · Next.js · PostgreSQL + pgvector · Redis · BullMQ · Socket.io · Docker · Turborepo
 
@@ -129,6 +131,7 @@ deskflow/
 │   └── tsconfig/         # configs TypeScript partagées (strict)
 ├── docker/
 │   └── dev.Dockerfile    # image de dev : Node 24 + pnpm
+├── .github/workflows/    # CI GitHub Actions
 ├── bin/                  # wrappers Docker (pnpm, sh)
 ├── docker-compose.yml
 └── turbo.json
@@ -157,7 +160,7 @@ deskflow/
 - [x] Jalon 0 — Prisma : schéma Tenant / User, première migration (+ pgvector), seed
 - [x] Jalon 0 — Config typée et validée au démarrage (`@nestjs/config` + zod)
 - [x] Jalon 0 — Endpoint `/health` (`@nestjs/terminus`) + healthcheck Docker
-- [ ] Jalon 0 — CI, hooks git
+- [x] Jalon 0 — CI GitHub Actions : lint → typecheck → tests → build → tests e2e sur un vrai Postgres
 - [ ] Jalon 1 — Authentification et multi-tenant
 - [ ] Jalon 2 — Tickets et messages
 - [ ] Jalon 3 — Temps réel et pièces jointes
