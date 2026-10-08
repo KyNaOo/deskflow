@@ -13,18 +13,27 @@ import type { AuthTokens } from './token.service.js';
  * secure : HTTPS uniquement, sauf en développement local.
  */
 export function setAuthCookies(res: Response, tokens: AuthTokens, secure: boolean) {
-  const options: CookieOptions = { httpOnly: true, sameSite: 'lax', secure };
-
   res.cookie(ACCESS_TOKEN_COOKIE, tokens.accessToken, {
-    ...options,
-    path: '/',
+    ...accessCookieOptions(secure),
     maxAge: ACCESS_TOKEN_TTL_SECONDS * 1000,
   });
-
-  // Limité aux routes /auth : le refresh token ne voyage pas avec chaque requête
   res.cookie(REFRESH_TOKEN_COOKIE, tokens.refreshToken, {
-    ...options,
-    path: '/auth',
+    ...refreshCookieOptions(secure),
     maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
   });
+}
+
+/** Le navigateur n'efface un cookie que si le chemin et les attributs correspondent. */
+export function clearAuthCookies(res: Response, secure: boolean) {
+  res.clearCookie(ACCESS_TOKEN_COOKIE, accessCookieOptions(secure));
+  res.clearCookie(REFRESH_TOKEN_COOKIE, refreshCookieOptions(secure));
+}
+
+function accessCookieOptions(secure: boolean): CookieOptions {
+  return { httpOnly: true, sameSite: 'lax', secure, path: '/' };
+}
+
+// Limité aux routes /auth : le refresh token ne voyage pas avec chaque requête
+function refreshCookieOptions(secure: boolean): CookieOptions {
+  return { httpOnly: true, sameSite: 'lax', secure, path: '/auth' };
 }
