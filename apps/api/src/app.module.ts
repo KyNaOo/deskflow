@@ -1,8 +1,7 @@
-import { Module, ValidationPipe } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_PIPE } from '@nestjs/core';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
+import cookieParser from 'cookie-parser';
 import { AuthModule } from './auth/auth.module.js';
 import { validateEnv } from './config/env.js';
 import { HealthModule } from './health/health.module.js';
@@ -20,9 +19,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     HealthModule,
     AuthModule,
   ],
-  controllers: [AppController],
   providers: [
-    AppService,
     {
       // Déclaré ici plutôt que dans main.ts pour s'appliquer aussi aux tests e2e
       provide: APP_PIPE,
@@ -34,4 +31,9 @@ import { PrismaModule } from './prisma/prisma.module.js';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  // Déclaré ici plutôt que dans main.ts pour s'appliquer aussi aux tests e2e
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(cookieParser()).forRoutes('*');
+  }
+}

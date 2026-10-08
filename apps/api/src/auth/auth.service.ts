@@ -77,6 +77,20 @@ export class AuthService {
     const tokens = await this.tokenService.issueTokens(publicUser);
     return { user: publicUser, tokens };
   }
+
+  /** Profil de l'utilisateur connecté (le JWT ne contient que son id, son tenant et son rôle). */
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: publicUserSelect,
+    });
+
+    // Compte supprimé alors que son access token est encore valide
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    return user;
+  }
 }
 
 function isUniqueConstraintViolation(error: unknown): boolean {

@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { HealthCheck, HealthCheckService, PrismaHealthIndicator } from '@nestjs/terminus';
+import { Public } from '../auth/decorators/public.decorator.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 /**
@@ -7,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
  * Utilisé par le healthcheck Docker et le smoke test après déploiement :
  * 200 si tout va bien, 503 si une dépendance est indisponible.
  */
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(
