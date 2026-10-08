@@ -55,7 +55,7 @@ Créés par `bin/pnpm db:seed` dans l'organisation **Acme Corp** (`acme`), mot d
 | `redis` | `localhost:6379` | Cache, pub/sub, files BullMQ |
 | `s3` | http://localhost:8333 | API S3 (SeaweedFS) — un `AccessDenied` dans le navigateur est **normal** : l'API exige des requêtes signées |
 | `s3` (admin) | http://localhost:23646 | Interface web de SeaweedFS (buckets, fichiers) |
-| `mailpit` | http://localhost:8025 | Boîte mail de dev : capture tous les e-mails envoyés |
+| `mailpit` | http://localhost:8026 | Boîte mail de dev : capture tous les e-mails envoyés |
 
 Un port est déjà pris sur votre machine ? Changez-le dans `.env` (`WEB_PORT`, `API_PORT`, `POSTGRES_PORT`, `MAILPIT_UI_PORT`…).
 
@@ -147,7 +147,7 @@ deskflow/
 
 ## Dépannage
 
-- **`port is already allocated`** : un autre projet utilise ce port → modifier la variable correspondante dans `.env` (ex. `MAILPIT_UI_PORT=8026`), puis `docker compose up -d`. Pour trouver le coupable : `docker ps --format '{{.Names}}\t{{.Ports}}' | grep 8025`.
+- **`port is already allocated`** : un autre projet utilise ce port → modifier la variable correspondante dans `.env` (ex. `MAILPIT_UI_PORT=8027`), puis `docker compose up -d`. Pour trouver le coupable : `docker ps --format '{{.Names}}\t{{.Ports}}' | grep 8026`.
 - **`api` reste en `unhealthy`** : `curl localhost:3001/health` indique quelle dépendance est `down` (en général la base : `docker compose ps postgres`).
 - **`web` inaccessible alors que l'api répond** : un service n'a pas pu démarrer et Compose a interrompu le lancement → `docker compose ps -a` pour voir lequel est resté en `Created`.
 - **`Configuration invalide` au démarrage de l'api** : une variable a été ajoutée au projet → comparer son `.env` avec `.env.example`, puis `docker compose up -d` (recrée les conteneurs avec la nouvelle config).
