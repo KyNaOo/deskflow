@@ -1,13 +1,38 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Res } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { Response } from 'express';
+import type { Env } from '../config/env.js';
+import { setAuthCookies } from './auth-cookies.js';
 import { AuthService } from './auth.service.js';
+import { LoginDto } from './dto/login.dto.js';
 import { RegisterTenantDto } from './dto/register-tenant.dto.js';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  private readonly secureCookies: boolean;
+
+  constructor(
+    private readonly authService: AuthService,
+    config: ConfigService<Env, true>,
+  ) {
+    this.secureCookies = config.get('NODE_ENV', { infer: true }) === 'production';
+  }
 
   @Post('register-tenant')
-  registerTenant(@Body() dto: RegisterTenantDto) {
-    return this.authService.registerTenant(dto);
+  async registerTenant(
+    @Body() dto: RegisterTenantDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { tokens, ...account } = await this.authService.registerTenant(dto);
+    setAuthCookies(res, tokens, this.secureCookies);
+    return account;
+  }
+
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    const { tokens, user } = await this.authService.login(dto);
+    setAuthCookies(res, tokens, this.secureCookies);
+    return { user };
   }
 }

@@ -1,9 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsEmail, IsNotEmpty, IsString, Length, Matches, MaxLength } from 'class-validator';
-
-const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
-const normalize = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim().toLowerCase() : value;
+import { trim, trimAndLowercase } from './transforms.js';
 
 export class RegisterTenantDto {
   @Transform(trim)
@@ -13,7 +10,7 @@ export class RegisterTenantDto {
   organizationName: string;
 
   /** Identifiant de l'organisation dans les URLs : `acme-corp` */
-  @Transform(normalize)
+  @Transform(trimAndLowercase)
   @IsString()
   @Length(3, 50)
   @Matches(/^[a-z0-9]+(-[a-z0-9]+)*$/, {
@@ -27,7 +24,7 @@ export class RegisterTenantDto {
   @MaxLength(100)
   name: string;
 
-  @Transform(normalize)
+  @Transform(trimAndLowercase)
   @IsEmail()
   email: string;
 

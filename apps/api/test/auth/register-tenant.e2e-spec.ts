@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
-import { AppModule } from '../../src/app.module.js';
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from '../../src/auth/auth.constants.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
+import { getSetCookie } from '../helpers/cookies.js';
+import { createTestApp } from '../helpers/create-test-app.js';
 
 const SLUG_PREFIX = 'e2e-register-';
 
@@ -23,9 +24,7 @@ describe('POST /auth/register-tenant (e2e)', () => {
   let prisma: PrismaService;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleRef.createNestApplication();
-    await app.init();
+    app = await createTestApp();
     prisma = app.get(PrismaService);
   });
 
@@ -39,7 +38,7 @@ describe('POST /auth/register-tenant (e2e)', () => {
     await app.close();
   });
 
-  it('crée l’organisation et son administrateur', async () => {
+  it('crée l’organisation et son administrateur, puis le connecte', async () => {
     const body = validBody();
 
     const response = await request(app.getHttpServer())
@@ -49,9 +48,17 @@ describe('POST /auth/register-tenant (e2e)', () => {
 
     expect(response.body).toEqual({
       tenant: { id: expect.any(String), name: 'Globex', slug: body.slug },
-      user: { id: expect.any(String), name: 'Grace Admin', email: body.email, role: 'ADMIN' },
+      user: {
+        id: expect.any(String),
+        tenantId: response.body.tenant.id,
+        name: 'Grace Admin',
+        email: body.email,
+        role: 'ADMIN',
+      },
     });
     expect(JSON.stringify(response.body)).not.toContain('password');
+    expect(getSetCookie(response, ACCESS_TOKEN_COOKIE)).toBeDefined();
+    expect(getSetCookie(response, REFRESH_TOKEN_COOKIE)).toBeDefined();
 
     const user = await prisma.user.findUniqueOrThrow({ where: { id: response.body.user.id } });
     expect(user.tenantId).toBe(response.body.tenant.id);
