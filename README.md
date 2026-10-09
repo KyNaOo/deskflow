@@ -4,7 +4,7 @@
 
 Help desk SaaS multi-tenant avec assistant IA : tickets, chat temps réel entre clients et agents, suggestions de réponse basées sur la base de connaissances de chaque organisation (RAG).
 
-> 🚧 Projet en cours de construction — Jalon 0 (socle) terminé, prochaine étape : authentification et multi-tenant.
+> 🚧 Projet en cours de construction — Jalon 0 (socle) terminé, Jalon 1 (authentification et multi-tenant) en cours.
 
 **Stack :** TypeScript · NestJS · Next.js · PostgreSQL + pgvector · Redis · BullMQ · Socket.io · Docker · Turborepo
 
@@ -125,7 +125,10 @@ deskflow/
 ├── apps/
 │   ├── api/              # NestJS (Vitest, oxlint)
 │   │   ├── prisma/       # schema.prisma, migrations SQL, seed
-│   │   └── src/prisma/   # PrismaService (injectable partout)
+│   │   └── src/
+│   │       ├── auth/     # inscription, connexion, JWT + refresh tokens, guards
+│   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
+│   │       └── users/    # première route métier, démontre l'isolation tenant
 │   └── web/              # Next.js App Router + Tailwind
 ├── packages/
 │   └── tsconfig/         # configs TypeScript partagées (strict)
@@ -143,6 +146,7 @@ deskflow/
 - **pnpm workspaces + Turborepo** : types partagés entre front et back, tâches mises en cache.
 - **PostgreSQL + pgvector** plutôt qu'une base vectorielle dédiée : relationnel et embeddings dans la même base, les mêmes transactions et la même isolation par tenant.
 - **Prisma** : schéma unique, migrations SQL versionnées et client entièrement typé. Tables et colonnes en `snake_case` (`@map`) pour garder un SQL brut lisible là où Prisma ne suffit pas (recherche vectorielle, plein texte, analytics).
+- **Isolation multi-tenant automatique** : le `tenantId` vient toujours du JWT, jamais de la requête. `JwtAuthGuard` le dépose dans un contexte par requête (`nestjs-cls`, basé sur `AsyncLocalStorage`) et une extension Prisma l'ajoute à chaque requête sur les modèles concernés. Le code métier n'écrit jamais `where: { tenantId }` : il ne peut donc pas l'oublier. Une ressource d'un autre tenant renvoie **404** (et non 403, pour ne pas confirmer qu'elle existe), et une requête faite hors contexte tenant échoue au lieu de tout lire.
 - **SeaweedFS** en local pour le stockage objet : API S3, donc le même code fonctionne avec S3 / R2 en production (MinIO ne publie plus d'images Docker).
 
 ## Dépannage

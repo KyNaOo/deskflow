@@ -2,10 +2,12 @@ import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/
 import { ConfigModule } from '@nestjs/config';
 import { APP_PIPE } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
+import { ClsModule } from 'nestjs-cls';
 import { AuthModule } from './auth/auth.module.js';
 import { validateEnv } from './config/env.js';
 import { HealthModule } from './health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { UsersModule } from './users/users.module.js';
 
 @Module({
   imports: [
@@ -15,9 +17,12 @@ import { PrismaModule } from './prisma/prisma.module.js';
       ignoreEnvFile: true,
       validate: validateEnv,
     }),
+    // Ouvre un contexte isolé par requête (AsyncLocalStorage), alimenté ensuite par JwtAuthGuard
+    ClsModule.forRoot({ global: true, middleware: { mount: true } }),
     PrismaModule,
     HealthModule,
     AuthModule,
+    UsersModule,
   ],
   providers: [
     {
