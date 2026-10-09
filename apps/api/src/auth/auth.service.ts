@@ -142,11 +142,14 @@ export class AuthService {
     return { user, tokens };
   }
 
-  /** Profil de l'utilisateur connecté (le JWT ne contient que son id, son tenant et son rôle). */
+  /**
+   * Profil de l'utilisateur connecté (le JWT ne contient que son id, son tenant et son rôle),
+   * avec son organisation : le front s'en sert pour construire ses URLs (`/acme`).
+   */
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: publicUserSelect,
+      select: { ...publicUserSelect, tenant: { select: { name: true, slug: true } } },
     });
 
     // Compte supprimé alors que son access token est encore valide

@@ -4,7 +4,7 @@
 
 Help desk SaaS multi-tenant avec assistant IA : tickets, chat temps réel entre clients et agents, suggestions de réponse basées sur la base de connaissances de chaque organisation (RAG).
 
-> 🚧 Projet en cours de construction — Jalon 0 (socle) terminé, Jalon 1 (authentification et multi-tenant) en cours.
+> 🚧 Projet en cours de construction — Jalons 0 (socle) et 1 (authentification et multi-tenant) terminés, prochaine étape : tickets et messages.
 
 **Stack :** TypeScript · NestJS · Next.js · PostgreSQL + pgvector · Redis · BullMQ · Socket.io · Docker · Turborepo
 
@@ -98,6 +98,7 @@ bin/pnpm build
 # Cibler une seule app
 bin/pnpm --filter api test:watch
 bin/pnpm --filter api test:e2e
+bin/pnpm --filter web test
 
 # Base de données (Prisma)
 bin/pnpm db:migrate --name add_tickets   # après modif du schéma : crée + applique une migration
@@ -130,7 +131,11 @@ deskflow/
 │   │       ├── mail/     # envoi d'e-mails (Nodemailer → Mailpit en dev)
 │   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
 │   │       └── users/    # liste des membres (isolation tenant), invitations
-│   └── web/              # Next.js App Router + Tailwind
+│   └── web/              # Next.js App Router + Tailwind + shadcn/ui (Vitest, ESLint)
+│       ├── app/(auth)/   # connexion, inscription, acceptation d'invitation
+│       ├── app/[tenant]/ # pages privées d'une organisation
+│       ├── lib/api/      # clients API navigateur (refresh transparent) et serveur
+│       └── proxy.ts      # redirection optimiste des pages privées sans session
 ├── packages/
 │   └── tsconfig/         # configs TypeScript partagées (strict)
 ├── docker/
@@ -149,6 +154,7 @@ deskflow/
 - **Prisma** : schéma unique, migrations SQL versionnées et client entièrement typé. Tables et colonnes en `snake_case` (`@map`) pour garder un SQL brut lisible là où Prisma ne suffit pas (recherche vectorielle, plein texte, analytics).
 - **Isolation multi-tenant automatique** : le `tenantId` vient toujours du JWT, jamais de la requête. `JwtAuthGuard` le dépose dans un contexte par requête (`nestjs-cls`, basé sur `AsyncLocalStorage`) et une extension Prisma l'ajoute à chaque requête sur les modèles concernés. Le code métier n'écrit jamais `where: { tenantId }` : il ne peut donc pas l'oublier. Une ressource d'un autre tenant renvoie **404** (et non 403, pour ne pas confirmer qu'elle existe), et une requête faite hors contexte tenant échoue au lieu de tout lire.
 - **Invitations à usage unique** : un admin invite un agent par e-mail (`POST /users/invite`). Comme le refresh token, le jeton est aléatoire et seule son empreinte SHA-256 est stockée. Il expire au bout de 48 h et son acceptation (`POST /auth/accept-invitation`) est conditionnelle, donc deux requêtes simultanées ne peuvent pas créer deux comptes. En dev, les e-mails arrivent dans Mailpit.
+- **Session côté front** : les jetons restent dans des cookies `httpOnly`, que le JavaScript ne lit jamais. Le navigateur appelle l'API directement (CORS limité à `WEB_URL`, avec `credentials`). Les Server Components appellent l'API par le réseau Docker en transmettant les cookies de la requête. Sur un 401, le client renouvelle la session puis rejoue la requête une seule fois. Les requêtes qui reçoivent un 401 en même temps attendent **le même** refresh : deux refresh simultanés présenteraient le même jeton, ce que l'API traite comme un vol. Quand le cookie d'accès a expiré au moment de charger une page, `proxy.ts` redirige vers `/refresh`, qui renouvelle la session dans le navigateur (le refresh token n'est envoyé qu'aux routes `/auth` de l'API) puis renvoie vers la page demandée.
 - **Rate limiting** (`@nestjs/throttler`) sur la connexion et l'inscription uniquement : 5 tentatives par minute et par IP, puis **429**. Le compteur est vérifié avant la validation du body et avant toute lecture en base.
 - **SeaweedFS** en local pour le stockage objet : API S3, donc le même code fonctionne avec S3 / R2 en production (MinIO ne publie plus d'images Docker).
 
@@ -164,6 +170,7 @@ deskflow/
 
 ## Pistes d'amélioration
 
+- **Cookies en production** : en dev, le front et l'API partagent `localhost`, donc les cookies posés par l'API sont visibles du serveur Next.js. En production, il faudra servir les deux sur le même site (ex. `app.exemple.com` et `api.exemple.com`, avec l'attribut `Domain` sur les cookies) ou faire passer l'API par le serveur Next.js.
 - **Rate limiting multi-instances** : les compteurs sont en mémoire, donc propres à chaque instance de l'API. Avec plusieurs instances (Jalon 3), il faudra les partager dans Redis (stockage Redis pour `@nestjs/throttler`).
 
 ## Feuille de route
@@ -173,7 +180,7 @@ deskflow/
 - [x] Jalon 0 — Config typée et validée au démarrage (`@nestjs/config` + zod)
 - [x] Jalon 0 — Endpoint `/health` (`@nestjs/terminus`) + healthcheck Docker
 - [x] Jalon 0 — CI GitHub Actions : lint → typecheck → tests → build → tests e2e sur un vrai Postgres
-- [ ] Jalon 1 — Authentification et multi-tenant
+- [x] Jalon 1 — Authentification et multi-tenant : inscription, JWT + refresh tokens (rotation, détection de vol), guards, isolation tenant, invitations, rate limiting, pages front
 - [ ] Jalon 2 — Tickets et messages
 - [ ] Jalon 3 — Temps réel et pièces jointes
 - [ ] Jalon 4 — Traitements asynchrones

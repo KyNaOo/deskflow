@@ -56,6 +56,7 @@ describe('GET /auth/me — routes protégées par défaut (e2e)', () => {
       name: 'Alice',
       email: 'alice@umbrella.test',
       role: 'ADMIN',
+      tenant: { name: 'Umbrella', slug: expect.stringMatching(SLUG_PREFIX) },
     });
   });
 

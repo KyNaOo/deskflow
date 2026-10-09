@@ -1,6 +1,9 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsNotIn, IsString, Length, Matches, MaxLength } from 'class-validator';
 import { trim, trimAndLowercase } from './transforms.js';
+
+/** Premiers segments d'URL déjà utilisés par le front : un tenant ne peut pas les prendre. */
+export const RESERVED_SLUGS = ['login', 'register', 'invitations', 'refresh', 'portal', 'api'];
 
 export class RegisterTenantDto {
   @Transform(trim)
@@ -16,6 +19,7 @@ export class RegisterTenantDto {
   @Matches(/^[a-z0-9]+(-[a-z0-9]+)*$/, {
     message: 'slug ne peut contenir que des lettres minuscules, des chiffres et des tirets',
   })
+  @IsNotIn(RESERVED_SLUGS, { message: 'ce slug est réservé' })
   slug: string;
 
   @Transform(trim)

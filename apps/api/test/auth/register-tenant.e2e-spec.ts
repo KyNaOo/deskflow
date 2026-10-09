@@ -90,6 +90,15 @@ describe('POST /auth/register-tenant (e2e)', () => {
     expect(await prisma.tenant.count({ where: { slug: body.slug } })).toBe(1);
   });
 
+  it('refuse un slug réservé par une route du front (400)', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/register-tenant')
+      .send({ ...validBody(), slug: 'login' })
+      .expect(400);
+
+    expect(response.body.message).toContain('ce slug est réservé');
+  });
+
   it('refuse un body invalide avec le détail des champs (400)', async () => {
     const response = await request(app.getHttpServer())
       .post('/auth/register-tenant')
