@@ -28,6 +28,9 @@ jobs:
     env:
       DATABASE_URL: postgresql://deskflow:deskflow@localhost:5432/deskflow
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      # Aucun e-mail réellement envoyé : le Mailer est mocké dans les tests
+      SMTP_URL: smtp://localhost:1025
+      WEB_URL: http://localhost:3000
 
     steps:
       - uses: actions/checkout@v7

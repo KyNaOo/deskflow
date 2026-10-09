@@ -126,9 +126,10 @@ deskflow/
 │   ├── api/              # NestJS (Vitest, oxlint)
 │   │   ├── prisma/       # schema.prisma, migrations SQL, seed
 │   │   └── src/
-│   │       ├── auth/     # inscription, connexion, JWT + refresh tokens, guards
+│   │       ├── auth/     # inscription, connexion, JWT + refresh tokens, guards, acceptation d'invitation
+│   │       ├── mail/     # envoi d'e-mails (Nodemailer → Mailpit en dev)
 │   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
-│   │       └── users/    # première route métier, démontre l'isolation tenant
+│   │       └── users/    # liste des membres (isolation tenant), invitations
 │   └── web/              # Next.js App Router + Tailwind
 ├── packages/
 │   └── tsconfig/         # configs TypeScript partagées (strict)
@@ -147,6 +148,7 @@ deskflow/
 - **PostgreSQL + pgvector** plutôt qu'une base vectorielle dédiée : relationnel et embeddings dans la même base, les mêmes transactions et la même isolation par tenant.
 - **Prisma** : schéma unique, migrations SQL versionnées et client entièrement typé. Tables et colonnes en `snake_case` (`@map`) pour garder un SQL brut lisible là où Prisma ne suffit pas (recherche vectorielle, plein texte, analytics).
 - **Isolation multi-tenant automatique** : le `tenantId` vient toujours du JWT, jamais de la requête. `JwtAuthGuard` le dépose dans un contexte par requête (`nestjs-cls`, basé sur `AsyncLocalStorage`) et une extension Prisma l'ajoute à chaque requête sur les modèles concernés. Le code métier n'écrit jamais `where: { tenantId }` : il ne peut donc pas l'oublier. Une ressource d'un autre tenant renvoie **404** (et non 403, pour ne pas confirmer qu'elle existe), et une requête faite hors contexte tenant échoue au lieu de tout lire.
+- **Invitations à usage unique** : un admin invite un agent par e-mail (`POST /users/invite`). Comme le refresh token, le jeton est aléatoire et seule son empreinte SHA-256 est stockée. Il expire au bout de 48 h et son acceptation (`POST /auth/accept-invitation`) est conditionnelle, donc deux requêtes simultanées ne peuvent pas créer deux comptes. En dev, les e-mails arrivent dans Mailpit.
 - **Rate limiting** (`@nestjs/throttler`) sur la connexion et l'inscription uniquement : 5 tentatives par minute et par IP, puis **429**. Le compteur est vérifié avant la validation du body et avant toute lecture en base.
 - **SeaweedFS** en local pour le stockage objet : API S3, donc le même code fonctionne avec S3 / R2 en production (MinIO ne publie plus d'images Docker).
 

@@ -6,6 +6,7 @@ import { ClsModule } from 'nestjs-cls';
 import { AuthModule } from './auth/auth.module.js';
 import { validateEnv } from './config/env.js';
 import { HealthModule } from './health/health.module.js';
+import { MailModule } from './mail/mail.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -20,6 +21,7 @@ import { UsersModule } from './users/users.module.js';
     // Ouvre un contexte isolé par requête (AsyncLocalStorage), alimenté ensuite par JwtAuthGuard
     ClsModule.forRoot({ global: true, middleware: { mount: true } }),
     PrismaModule,
+    MailModule,
     HealthModule,
     AuthModule,
     UsersModule,

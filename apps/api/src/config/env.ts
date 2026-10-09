@@ -11,6 +11,10 @@ export const envSchema = z.object({
   DATABASE_URL: z.url(),
   // Signe les access tokens : quiconque le connaît peut fabriquer un JWT valide
   JWT_SECRET: z.string().min(32),
+  // Serveur d'envoi des e-mails : Mailpit en développement
+  SMTP_URL: z.url(),
+  // Adresse du front, pour les liens envoyés par e-mail
+  WEB_URL: z.url(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,10 +1,18 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { hash, verify } from '@node-rs/argon2';
-import { Prisma, Role } from '../generated/prisma/client.js';
+import { Role } from '../generated/prisma/client.js';
+import { isUniqueConstraintViolation } from '../prisma/prisma-errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { AcceptInvitationDto } from './dto/accept-invitation.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterTenantDto } from './dto/register-tenant.dto.js';
 import { publicUserSelect } from './public-user.js';
+import { hashSecretToken } from './secret-token.js';
 import { TokenService } from './token.service.js';
 
 @Injectable()
@@ -78,6 +86,62 @@ export class AuthService {
     return { user: publicUser, tokens };
   }
 
+  /**
+   * Crée le compte d'un invité dans le tenant de l'invitation, puis le connecte.
+   * Client Prisma non filtré : route publique, le tenant n'est connu que par l'invitation.
+   */
+  async acceptInvitation(dto: AcceptInvitationDto) {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { tokenHash: hashSecretToken(dto.token) },
+    });
+
+    if (!invitation) {
+      throw new BadRequestException('Invitation introuvable');
+    }
+    if (invitation.acceptedAt) {
+      throw new BadRequestException('Invitation déjà utilisée');
+    }
+    if (invitation.expiresAt <= new Date()) {
+      throw new BadRequestException('Invitation expirée, demandez-en une nouvelle');
+    }
+
+    const passwordHash = await hash(dto.password);
+
+    let user;
+    try {
+      user = await this.prisma.$transaction(async (tx) => {
+        // Conditionnel : si une requête concurrente vient d'accepter l'invitation, rien n'est modifié
+        const { count } = await tx.invitation.updateMany({
+          where: { id: invitation.id, acceptedAt: null },
+          data: { acceptedAt: new Date() },
+        });
+        if (count === 0) {
+          throw new BadRequestException('Invitation déjà utilisée');
+        }
+
+        return tx.user.create({
+          data: {
+            tenantId: invitation.tenantId,
+            email: invitation.email,
+            name: dto.name,
+            passwordHash,
+            role: invitation.role,
+          },
+          select: publicUserSelect,
+        });
+      });
+    } catch (error) {
+      if (isUniqueConstraintViolation(error)) {
+        // Compte créé entre l'envoi de l'invitation et son acceptation
+        throw new ConflictException('Cet e-mail est déjà membre de l’organisation');
+      }
+      throw error;
+    }
+
+    const tokens = await this.tokenService.issueTokens(user);
+    return { user, tokens };
+  }
+
   /** Profil de l'utilisateur connecté (le JWT ne contient que son id, son tenant et son rôle). */
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -91,8 +155,4 @@ export class AuthService {
     }
     return user;
   }
-}
-
-function isUniqueConstraintViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }

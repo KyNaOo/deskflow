@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from '../../src/auth/auth.constants.js';
-import { hashRefreshToken } from '../../src/auth/refresh-token.js';
+import { hashSecretToken } from '../../src/auth/secret-token.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
 import { getCookieValue, getSetCookie } from '../helpers/cookies.js';
 import { createTestApp } from '../helpers/create-test-app.js';
@@ -94,7 +94,7 @@ describe('POST /auth/login (e2e)', () => {
     const refreshToken = getCookieValue(response, REFRESH_TOKEN_COOKIE)!;
 
     const stored = await prisma.refreshToken.findUnique({
-      where: { tokenHash: hashRefreshToken(refreshToken) },
+      where: { tokenHash: hashSecretToken(refreshToken) },
     });
     expect(stored?.userId).toBe(account.userId);
     expect(await prisma.refreshToken.count({ where: { tokenHash: refreshToken } })).toBe(0);

@@ -1,11 +1,28 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { publicUserSelect } from '../auth/public-user.js';
+import { generateSecretToken, hashSecretToken } from '../auth/secret-token.js';
+import type { Env } from '../config/env.js';
+import { MailService } from '../mail/mail.service.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
+import { InviteUserDto } from './dto/invite-user.dto.js';
+import { invitationEmail } from './invitation-email.js';
+
+const INVITATION_TTL_MS = 48 * 60 * 60 * 1000;
 
 /** Aucun filtre tenantId écrit ici : le client Prisma injecté l'ajoute de lui-même. */
 @Injectable()
 export class UsersService {
-  constructor(@Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma) {}
+  private readonly webUrl: string;
+
+  constructor(
+    @Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma,
+    private readonly mail: MailService,
+    config: ConfigService<Env, true>,
+  ) {
+    this.webUrl = config.get('WEB_URL', { infer: true });
+  }
 
   findAll() {
     return this.prisma.user.findMany({ select: publicUserSelect, orderBy: { createdAt: 'asc' } });
@@ -19,5 +36,39 @@ export class UsersService {
       throw new NotFoundException('Utilisateur introuvable');
     }
     return user;
+  }
+
+  /** Envoie par e-mail un lien à usage unique pour rejoindre l'organisation (48 h). */
+  async invite(inviter: AuthenticatedUser, dto: InviteUserDto) {
+    const member = await this.prisma.user.findFirst({ where: { email: dto.email } });
+    if (member) {
+      throw new ConflictException('Cet e-mail est déjà membre de l’organisation');
+    }
+
+    const token = generateSecretToken();
+    const invitation = await this.prisma.invitation.create({
+      data: {
+        // Exigé par les types Prisma ; l'extension tenant le force de toute façon au tenant du JWT
+        tenantId: inviter.tenantId,
+        email: dto.email,
+        role: dto.role,
+        tokenHash: hashSecretToken(token),
+        expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
+      },
+      select: { id: true, email: true, role: true, expiresAt: true, tenant: { select: { name: true } } },
+    });
+
+    // Synchrone pour l'instant : passera dans une file BullMQ (retries) au Jalon 4
+    await this.mail.send(
+      invitationEmail({
+        to: invitation.email,
+        organizationName: invitation.tenant.name,
+        link: `${this.webUrl}/invitations/${token}`,
+        expiresAt: invitation.expiresAt,
+      }),
+    );
+
+    const { tenant: _, ...publicInvitation } = invitation;
+    return publicInvitation;
   }
 }

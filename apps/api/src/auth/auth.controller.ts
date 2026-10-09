@@ -20,6 +20,7 @@ import { AuthService } from './auth.service.js';
 import type { AuthenticatedUser } from './authenticated-user.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
+import { AcceptInvitationDto } from './dto/accept-invitation.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterTenantDto } from './dto/register-tenant.dto.js';
 import { TokenService } from './token.service.js';
@@ -55,6 +56,18 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const { tokens, user } = await this.authService.login(dto);
+    setAuthCookies(res, tokens, this.secureCookies);
+    return { user };
+  }
+
+  // Pas de rate limiting : le jeton (256 bits aléatoires) ne se devine pas
+  @Public()
+  @Post('accept-invitation')
+  async acceptInvitation(
+    @Body() dto: AcceptInvitationDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { tokens, user } = await this.authService.acceptInvitation(dto);
     setAuthCookies(res, tokens, this.secureCookies);
     return { user };
   }

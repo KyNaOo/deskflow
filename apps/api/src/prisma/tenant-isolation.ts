@@ -1,7 +1,10 @@
 import type { Prisma } from '../generated/prisma/client.js';
 
 /** Modèles portant un tenantId : toute requête sur eux est filtrée automatiquement. */
-export const TENANT_SCOPED_MODELS: ReadonlySet<Prisma.ModelName> = new Set(['User']);
+export const TENANT_SCOPED_MODELS: ReadonlySet<Prisma.ModelName> = new Set([
+  'User',
+  'Invitation',
+]);
 
 // Depuis Prisma 5, findUnique / update / delete acceptent des champs non uniques dans
 // leur where : `{ id, tenantId }` reste valide et une ressource d'un autre tenant est

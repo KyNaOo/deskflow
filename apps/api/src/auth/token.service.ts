@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { Prisma, User } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { REFRESH_TOKEN_TTL_DAYS } from './auth.constants.js';
-import { generateRefreshToken, hashRefreshToken } from './refresh-token.js';
+import { generateSecretToken, hashSecretToken } from './secret-token.js';
 
 export interface AuthTokens {
   accessToken: string;
@@ -42,7 +42,7 @@ export class TokenService {
    */
   async rotateTokens(presentedToken: string): Promise<AuthTokens> {
     const current = await this.prisma.refreshToken.findUnique({
-      where: { tokenHash: hashRefreshToken(presentedToken) },
+      where: { tokenHash: hashSecretToken(presentedToken) },
       include: { user: { select: { id: true, tenantId: true, role: true } } },
     });
 
@@ -80,7 +80,7 @@ export class TokenService {
   /** Déconnexion : le refresh token présenté ne pourra plus être utilisé. */
   async revokeToken(presentedToken: string): Promise<void> {
     await this.prisma.refreshToken.updateMany({
-      where: { tokenHash: hashRefreshToken(presentedToken), revokedAt: null },
+      where: { tokenHash: hashSecretToken(presentedToken), revokedAt: null },
       data: { revokedAt: new Date() },
     });
   }
@@ -93,12 +93,12 @@ export class TokenService {
   }
 
   private async saveRefreshToken(db: Prisma.TransactionClient, userId: string, familyId: string) {
-    const value = generateRefreshToken();
+    const value = generateSecretToken();
     const { id } = await db.refreshToken.create({
       data: {
         userId,
         familyId,
-        tokenHash: hashRefreshToken(value),
+        tokenHash: hashSecretToken(value),
         expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * DAY_IN_MS),
       },
       select: { id: true },

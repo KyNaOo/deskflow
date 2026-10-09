@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from '../../src/auth/auth.constants.js';
-import { hashRefreshToken } from '../../src/auth/refresh-token.js';
+import { hashSecretToken } from '../../src/auth/secret-token.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
 import { getCookieValue, getSetCookie } from '../helpers/cookies.js';
 import { createTestApp } from '../helpers/create-test-app.js';
@@ -68,8 +68,8 @@ describe('POST /auth/refresh et /auth/logout (e2e)', () => {
     const firstToken = await loginAndGetRefreshToken();
     const secondToken = getCookieValue(await refresh(firstToken).expect(204), REFRESH_TOKEN_COOKIE)!;
 
-    const first = await prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash: hashRefreshToken(firstToken) } });
-    const second = await prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash: hashRefreshToken(secondToken) } });
+    const first = await prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash: hashSecretToken(firstToken) } });
+    const second = await prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash: hashSecretToken(secondToken) } });
 
     expect(first.revokedAt).not.toBeNull();
     expect(first.replacedById).toBe(second.id);
@@ -109,7 +109,7 @@ describe('POST /auth/refresh et /auth/logout (e2e)', () => {
   it('refuse un refresh token expiré (401)', async () => {
     const token = await loginAndGetRefreshToken();
     await prisma.refreshToken.update({
-      where: { tokenHash: hashRefreshToken(token) },
+      where: { tokenHash: hashSecretToken(token) },
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
 
