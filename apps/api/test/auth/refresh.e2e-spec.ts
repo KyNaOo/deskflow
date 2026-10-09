@@ -17,7 +17,8 @@ describe('POST /auth/refresh et /auth/logout (e2e)', () => {
   let credentials: { tenantSlug: string; email: string; password: string };
 
   beforeAll(async () => {
-    app = await createTestApp();
+    // Plus de connexions que la limite par minute : la limite est testée dans rate-limit.e2e-spec.ts
+    app = await createTestApp({ rateLimit: false });
     prisma = app.get(PrismaService);
 
     credentials = {

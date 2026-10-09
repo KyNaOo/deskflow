@@ -18,7 +18,8 @@ describe('POST /auth/login (e2e)', () => {
   let account: { slug: string; email: string; userId: string; tenantId: string };
 
   beforeAll(async () => {
-    app = await createTestApp();
+    // Plus de connexions que la limite par minute : la limite est testée dans rate-limit.e2e-spec.ts
+    app = await createTestApp({ rateLimit: false });
     prisma = app.get(PrismaService);
 
     const slug = `${SLUG_PREFIX}${randomUUID().slice(0, 8)}`;

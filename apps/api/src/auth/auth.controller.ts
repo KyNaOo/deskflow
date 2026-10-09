@@ -8,8 +8,10 @@ import {
   Req,
   Res,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import type { Env } from '../config/env.js';
 import { clearAuthCookies, setAuthCookies } from './auth-cookies.js';
@@ -34,7 +36,9 @@ export class AuthController {
     this.secureCookies = config.get('NODE_ENV', { infer: true }) === 'production';
   }
 
+  // Limité par IP sur ces deux routes seulement : 429 au-delà de AUTH_RATE_LIMIT
   @Public()
+  @UseGuards(ThrottlerGuard)
   @Post('register-tenant')
   async registerTenant(
     @Body() dto: RegisterTenantDto,
@@ -46,6 +50,7 @@ export class AuthController {
   }
 
   @Public()
+  @UseGuards(ThrottlerGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {

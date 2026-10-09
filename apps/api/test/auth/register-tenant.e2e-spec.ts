@@ -24,7 +24,8 @@ describe('POST /auth/register-tenant (e2e)', () => {
   let prisma: PrismaService;
 
   beforeAll(async () => {
-    app = await createTestApp();
+    // Plus d'inscriptions que la limite par minute : la limite est testée dans rate-limit.e2e-spec.ts
+    app = await createTestApp({ rateLimit: false });
     prisma = app.get(PrismaService);
   });
 
