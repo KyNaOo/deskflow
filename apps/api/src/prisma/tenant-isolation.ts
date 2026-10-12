@@ -4,6 +4,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 export const TENANT_SCOPED_MODELS: ReadonlySet<Prisma.ModelName> = new Set([
   'User',
   'Invitation',
+  'Ticket',
 ]);
 
 // Depuis Prisma 5, findUnique / update / delete acceptent des champs non uniques dans

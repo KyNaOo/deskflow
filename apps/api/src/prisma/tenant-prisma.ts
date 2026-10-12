@@ -1,5 +1,4 @@
-import { ClsService } from 'nestjs-cls';
-import type { TenantStore } from '../common/tenant-store.js';
+import { TenantContext } from '../common/tenant-context.js';
 import { PrismaService } from './prisma.service.js';
 import { scopeToTenant, TENANT_SCOPED_MODELS } from './tenant-isolation.js';
 
@@ -14,7 +13,7 @@ export const TENANT_PRISMA = Symbol('TENANT_PRISMA');
 
 export type TenantPrisma = ReturnType<typeof createTenantPrisma>;
 
-export function createTenantPrisma(prisma: PrismaService, cls: ClsService<TenantStore>) {
+export function createTenantPrisma(prisma: PrismaService, tenantContext: TenantContext) {
   return prisma.$extends({
     name: 'tenant-isolation',
     query: {
@@ -23,13 +22,7 @@ export function createTenantPrisma(prisma: PrismaService, cls: ClsService<Tenant
           if (!TENANT_SCOPED_MODELS.has(model)) {
             return query(args);
           }
-
-          const tenantId = cls.isActive() ? cls.get('tenantId') : undefined;
-          if (!tenantId) {
-            // Ex. route @Public() ou job sans contexte : on refuse plutôt que de tout lire
-            throw new Error(`Requête sur ${model} hors contexte tenant`);
-          }
-          return query(scopeToTenant(operation, args, tenantId));
+          return query(scopeToTenant(operation, args, tenantContext.tenantId));
         },
       },
     },

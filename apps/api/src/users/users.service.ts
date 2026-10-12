@@ -1,8 +1,8 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { publicUserSelect } from '../auth/public-user.js';
 import { generateSecretToken, hashSecretToken } from '../auth/secret-token.js';
+import { TenantContext } from '../common/tenant-context.js';
 import type { Env } from '../config/env.js';
 import { MailService } from '../mail/mail.service.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
@@ -11,7 +11,10 @@ import { invitationEmail } from './invitation-email.js';
 
 const INVITATION_TTL_MS = 48 * 60 * 60 * 1000;
 
-/** Aucun filtre tenantId écrit ici : le client Prisma injecté l'ajoute de lui-même. */
+/**
+ * Aucun filtre tenantId écrit ici : le client Prisma injecté l'ajoute de lui-même.
+ * Les créations prennent le tenant de TenantContext (celui du JWT).
+ */
 @Injectable()
 export class UsersService {
   private readonly webUrl: string;
@@ -19,6 +22,7 @@ export class UsersService {
   constructor(
     @Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma,
     private readonly mail: MailService,
+    private readonly tenantContext: TenantContext,
     config: ConfigService<Env, true>,
   ) {
     this.webUrl = config.get('WEB_URL', { infer: true });
@@ -39,7 +43,7 @@ export class UsersService {
   }
 
   /** Envoie par e-mail un lien à usage unique pour rejoindre l'organisation (48 h). */
-  async invite(inviter: AuthenticatedUser, dto: InviteUserDto) {
+  async invite(dto: InviteUserDto) {
     const member = await this.prisma.user.findFirst({ where: { email: dto.email } });
     if (member) {
       throw new ConflictException('Cet e-mail est déjà membre de l’organisation');
@@ -48,8 +52,7 @@ export class UsersService {
     const token = generateSecretToken();
     const invitation = await this.prisma.invitation.create({
       data: {
-        // Exigé par les types Prisma ; l'extension tenant le force de toute façon au tenant du JWT
-        tenantId: inviter.tenantId,
+        tenantId: this.tenantContext.tenantId,
         email: dto.email,
         role: dto.role,
         tokenHash: hashSecretToken(token),

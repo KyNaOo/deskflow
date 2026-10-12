@@ -24,6 +24,7 @@ export async function createTestApp({ rateLimit = true }: TestAppOptions = {}): 
   });
   // Même logger qu'en production (muet pendant les tests, voir loggerConfig)
   app.useLogger(app.get(Logger));
-  await app.init();
+  // Port libre choisi par l'OS : supertest réutilise ce serveur au lieu d'en démarrer un par requête
+  await app.listen(0);
   return app;
 }

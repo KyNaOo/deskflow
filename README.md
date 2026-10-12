@@ -45,6 +45,8 @@ Créés par `bin/pnpm db:seed` dans l'organisation **Acme Corp** (`acme`), mot d
 | Agent | `agent@acme.test` |
 | Client | `client@acme.test` |
 
+Le seed crée aussi 5 tickets de démonstration (statuts et priorités variés) ouverts par le client.
+
 ## Services
 
 | Service | URL | Rôle |
@@ -130,7 +132,9 @@ deskflow/
 │   │   └── src/
 │   │       ├── auth/     # inscription, connexion, JWT + refresh tokens, guards, acceptation d'invitation
 │   │       ├── mail/     # envoi d'e-mails (Nodemailer → Mailpit en dev)
+│   │       ├── common/   # filtre d'erreurs, logs, validation zod, contexte tenant
 │   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
+│   │       ├── tickets/  # tickets : création (numérotation par tenant) et lecture
 │   │       └── users/    # liste des membres (isolation tenant), invitations
 │   └── web/              # Next.js App Router + Tailwind + shadcn/ui (Vitest, ESLint)
 │       ├── app/(auth)/   # connexion, inscription, acceptation d'invitation
@@ -157,6 +161,7 @@ deskflow/
 - **Isolation multi-tenant automatique** : le `tenantId` vient toujours du JWT, jamais de la requête. `JwtAuthGuard` le dépose dans un contexte par requête (`nestjs-cls`, basé sur `AsyncLocalStorage`) et une extension Prisma l'ajoute à chaque requête sur les modèles concernés. Le code métier n'écrit jamais `where: { tenantId }` : il ne peut donc pas l'oublier. Une ressource d'un autre tenant renvoie **404** (et non 403, pour ne pas confirmer qu'elle existe), et une requête faite hors contexte tenant échoue au lieu de tout lire.
 - **Invitations à usage unique** : un admin invite un agent par e-mail (`POST /users/invite`). Comme le refresh token, le jeton est aléatoire et seule son empreinte SHA-256 est stockée. Il expire au bout de 48 h et son acceptation (`POST /auth/accept-invitation`) est conditionnelle, donc deux requêtes simultanées ne peuvent pas créer deux comptes. En dev, les e-mails arrivent dans Mailpit.
 - **Session côté front** : les jetons restent dans des cookies `httpOnly`, que le JavaScript ne lit jamais. Le navigateur appelle l'API directement (CORS limité à `WEB_URL`, avec `credentials`). Les Server Components appellent l'API par le réseau Docker en transmettant les cookies de la requête. Sur un 401, le client renouvelle la session puis rejoue la requête une seule fois. Les requêtes qui reçoivent un 401 en même temps attendent **le même** refresh : deux refresh simultanés présenteraient le même jeton, ce que l'API traite comme un vol. Quand le cookie d'accès a expiré au moment de charger une page, `proxy.ts` redirige vers `/refresh`, qui renouvelle la session dans le navigateur (le refresh token n'est envoyé qu'aux routes `/auth` de l'API) puis renvoie vers la page demandée.
+- **Numéro de ticket séquentiel par tenant** (`#42`) : chaque organisation a sa propre séquence. Le numéro vient d'un compteur sur le tenant, incrémenté atomiquement (`UPDATE … SET ticket_counter = ticket_counter + 1 RETURNING`) dans la transaction qui crée le ticket. La ligne du tenant reste verrouillée jusqu'au commit, donc deux créations simultanées ne peuvent pas obtenir le même numéro ; un `MAX(number) + 1` le permettrait, ce que le test de 20 créations simultanées détecte. Les routes désignent un ticket par ce numéro (`GET /tickets/42`) : il est unique dans le tenant, et le tenant vient du JWT.
 - **Validation partagée** : les règles de validation (longueurs, formats, slugs réservés…) sont des schémas zod de `packages/shared`, écrits **une seule fois**. Le front les utilise dans ses formulaires (react-hook-form) et l'API pour valider les requêtes : une petite `ZodValidationPipe` globale et des DTO créés par `createZodDto(schema)`, ce qui laisse les contrôleurs écrire `@Body() dto: LoginDto`. Une erreur affichée sous un champ est donc exactement celle que l'API renverrait.
 - **Erreurs et logs** : toutes les erreurs sortent au même format (`{ statusCode, error, message, requestId }`), grâce à un filtre global. Une erreur inattendue renvoie un 500 générique : le détail ne quitte jamais le serveur. Les logs sont structurés en JSON avec `nestjs-pino`, une ligne par requête, avec le même `requestId` que la réponse et l'en-tête `X-Request-Id`. Les cookies et en-têtes d'authentification sont masqués. En dev, `pino-pretty` les rend lisibles : `docker compose logs -f api`.
 - **Rate limiting** (`@nestjs/throttler`) sur la connexion et l'inscription uniquement : 5 tentatives par minute et par IP, puis **429**. Le compteur est vérifié avant la validation du body et avant toute lecture en base.

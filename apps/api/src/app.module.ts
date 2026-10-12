@@ -12,6 +12,7 @@ import { type Env, validateEnv } from './config/env.js';
 import { HealthModule } from './health/health.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { TicketsModule } from './tickets/tickets.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -34,6 +35,7 @@ import { UsersModule } from './users/users.module.js';
     HealthModule,
     AuthModule,
     UsersModule,
+    TicketsModule,
   ],
   providers: [
     // Déclaré ici plutôt que dans main.ts pour s'appliquer aussi aux tests e2e

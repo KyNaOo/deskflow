@@ -27,15 +27,32 @@ enum Plan {
   PRO
 }
 
+enum TicketStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
 model Tenant {
   id        String   @id @default(uuid(7)) @db.Uuid
   name      String
   slug      String   @unique
   plan      Plan     @default(FREE)
   createdAt DateTime @default(now()) @map("created_at")
+  // Dernier numéro de ticket attribué : incrémenté dans la transaction de création (TicketsService)
+  ticketCounter Int @default(0) @map("ticket_counter")
 
   users       User[]
   invitations Invitation[]
+  tickets     Ticket[]
 
   @@map("tenants")
 }
@@ -49,8 +66,11 @@ model User {
   role         Role     @default(CUSTOMER)
   createdAt    DateTime @default(now()) @map("created_at")
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  refreshTokens RefreshToken[]
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  refreshTokens   RefreshToken[]
+  ticketsOpened   Ticket[]       @relation("TicketCustomer")
+  ticketsAssigned Ticket[]       @relation("TicketAssignee")
+  messages        Message[]
 
   // Un même e-mail peut exister dans deux organisations différentes
   @@unique([tenantId, email])
@@ -90,4 +110,51 @@ model Invitation {
 
   @@index([tenantId])
   @@map("invitations")
+}
+
+// Numéro lisible (#42) séquentiel par tenant : chaque organisation a son propre ticket n° 1.
+model Ticket {
+  id              String         @id @default(uuid(7)) @db.Uuid
+  tenantId        String         @map("tenant_id") @db.Uuid
+  number          Int
+  subject         String
+  status          TicketStatus   @default(OPEN)
+  priority        TicketPriority @default(MEDIUM)
+  customerId      String         @map("customer_id") @db.Uuid
+  assigneeId      String?        @map("assignee_id") @db.Uuid
+  firstResponseAt DateTime?      @map("first_response_at")
+  resolvedAt      DateTime?      @map("resolved_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Cascade : supprimer un tenant supprime ses utilisateurs et ses tickets par deux chemins à la
+  // fois ; NoAction / Restrict échoueraient selon l'ordre des cascades. Le produit ne propose pas
+  // de supprimer un utilisateur : à ajouter un jour, il faudrait plutôt l'anonymiser.
+  customer User      @relation("TicketCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  assignee User?     @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  messages Message[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, assigneeId])
+  @@map("tickets")
+}
+
+// Pas de tenantId : un message est toujours lu ou écrit à travers son ticket, déjà filtré par tenant.
+model Message {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  ticketId       String   @map("ticket_id") @db.Uuid
+  authorId       String   @map("author_id") @db.Uuid
+  body           String
+  isInternalNote Boolean  @default(false) @map("is_internal_note")
+  aiGenerated    Boolean  @default(false) @map("ai_generated")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  // Cascade : voir Ticket.customer
+  author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@map("messages")
 }
