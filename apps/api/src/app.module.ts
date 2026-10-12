@@ -1,10 +1,13 @@
 import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { APP_PIPE } from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { ClsModule } from 'nestjs-cls';
+import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module.js';
-import { validateEnv } from './config/env.js';
+import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
+import { loggerConfig } from './common/logger.config.js';
+import { type Env, validateEnv } from './config/env.js';
 import { HealthModule } from './health/health.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -18,6 +21,11 @@ import { UsersModule } from './users/users.module.js';
       ignoreEnvFile: true,
       validate: validateEnv,
     }),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) =>
+        loggerConfig(config.get('NODE_ENV', { infer: true })),
+    }),
     // Ouvre un contexte isolé par requête (AsyncLocalStorage), alimenté ensuite par JwtAuthGuard
     ClsModule.forRoot({ global: true, middleware: { mount: true } }),
     PrismaModule,
@@ -27,6 +35,8 @@ import { UsersModule } from './users/users.module.js';
     UsersModule,
   ],
   providers: [
+    // Déclaré ici plutôt que dans main.ts pour s'appliquer aussi aux tests e2e
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
     {
       // Déclaré ici plutôt que dans main.ts pour s'appliquer aussi aux tests e2e
       provide: APP_PIPE,

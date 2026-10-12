@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { Logger } from 'nestjs-pino';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
 
@@ -18,7 +19,11 @@ export async function createTestApp({ rateLimit = true }: TestAppOptions = {}): 
     builder.overrideGuard(ThrottlerGuard).useValue({ canActivate: () => true });
   }
 
-  const app = (await builder.compile()).createNestApplication<INestApplication<App>>();
+  const app = (await builder.compile()).createNestApplication<INestApplication<App>>({
+    bufferLogs: true,
+  });
+  // Même logger qu'en production (muet pendant les tests, voir loggerConfig)
+  app.useLogger(app.get(Logger));
   await app.init();
   return app;
 }

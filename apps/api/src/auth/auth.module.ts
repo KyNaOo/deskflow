@@ -14,7 +14,10 @@ import { TokenService } from './token.service.js';
 @Module({
   imports: [
     // Compteurs en mémoire : suffisant pour une instance (voir README, pistes d'amélioration)
-    ThrottlerModule.forRoot([AUTH_RATE_LIMIT]),
+    ThrottlerModule.forRoot({
+      throttlers: [AUTH_RATE_LIMIT],
+      errorMessage: 'Trop de tentatives, réessayez dans une minute',
+    }),
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => ({

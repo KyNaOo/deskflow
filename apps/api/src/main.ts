@@ -1,15 +1,22 @@
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import type { Env } from './config/env.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Logs du démarrage mis en attente puis écrits par pino, comme tous les autres
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
   const config = app.get<ConfigService<Env, true>>(ConfigService);
 
   // Le front appelle l'API depuis le navigateur : seule son origine est autorisée,
   // avec les cookies (credentials) pour transmettre la session
-  app.enableCors({ origin: config.get('WEB_URL', { infer: true }), credentials: true });
+  app.enableCors({
+    origin: config.get('WEB_URL', { infer: true }),
+    credentials: true,
+    exposedHeaders: ['X-Request-Id'],
+  });
 
   await app.listen(config.get('PORT', { infer: true }));
 }

@@ -32,9 +32,10 @@ describe('GET /health (e2e)', () => {
 
     const response = await request(app.getHttpServer()).get('/health').expect(503);
 
+    // Format d'erreur uniforme, avec le rapport de Terminus dans details
     expect(response.body).toMatchObject({
-      status: 'error',
-      error: { database: { status: 'down' } },
+      statusCode: 503,
+      details: { status: 'error', error: { database: { status: 'down' } } },
     });
   });
 });
