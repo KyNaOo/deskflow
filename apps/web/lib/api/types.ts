@@ -1,4 +1,4 @@
-export type Role = "ADMIN" | "AGENT" | "CUSTOMER";
+import type { Role } from "@deskflow/shared";
 
 /** Réponse de GET /auth/me */
 export interface Profile {

@@ -1,5 +1,6 @@
 "use client";
 
+import { loginSchema, type LoginInput } from "@deskflow/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -8,16 +9,15 @@ import { Button } from "@/components/ui/button";
 import { FieldError, FieldGroup } from "@/components/ui/field";
 import { apiFetch } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
-import { loginSchema, type LoginValues } from "@/lib/auth/schemas";
 
 export function LoginForm() {
   const router = useRouter();
-  const form = useForm<LoginValues>({
+  const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
     defaultValues: { tenantSlug: "", email: "", password: "" },
   });
 
-  async function onSubmit(values: LoginValues) {
+  async function onSubmit(values: LoginInput) {
     try {
       await apiFetch("/auth/login", { method: "POST", json: values });
       router.push(`/${values.tenantSlug}`);

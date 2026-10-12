@@ -1,19 +1,4 @@
-import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
-import { trimAndLowercase } from './transforms.js';
+import { loginSchema } from '@deskflow/shared';
+import { createZodDto } from '../../common/zod-validation.js';
 
-export class LoginDto {
-  @Transform(trimAndLowercase)
-  @IsString()
-  @IsNotEmpty()
-  tenantSlug: string;
-
-  @Transform(trimAndLowercase)
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(128)
-  password: string;
-}
+export class LoginDto extends createZodDto(loginSchema) {}

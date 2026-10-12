@@ -1,19 +1,24 @@
 "use client";
 
+import { acceptInvitationSchema } from "@deskflow/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
+import type { z } from "zod";
 import { TextField } from "@/components/text-field";
 import { Button } from "@/components/ui/button";
 import { FieldError, FieldGroup } from "@/components/ui/field";
 import { apiFetch } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
-import { acceptInvitationSchema, type AcceptInvitationValues } from "@/lib/auth/schemas";
+
+// Le jeton vient de l'URL, pas d'un champ du formulaire
+const formSchema = acceptInvitationSchema.omit({ token: true });
+type AcceptInvitationValues = z.infer<typeof formSchema>;
 
 export function AcceptInvitationForm({ token }: { token: string }) {
   const router = useRouter();
   const form = useForm<AcceptInvitationValues>({
-    resolver: zodResolver(acceptInvitationSchema),
+    resolver: zodResolver(formSchema),
     defaultValues: { name: "", password: "" },
   });
 

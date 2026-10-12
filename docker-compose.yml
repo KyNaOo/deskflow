@@ -23,6 +23,12 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
 
+  # Recompile packages/shared à chaque modification : l'api et le front consomment sa version
+  # compilée (dist/, construite une première fois par `pnpm install`)
+  shared:
+    <<: *node-dev
+    command: ["pnpm", "--filter", "@deskflow/shared", "dev"]
+
   api:
     <<: *node-dev
     command: ["pnpm", "--filter", "api", "start:dev"]

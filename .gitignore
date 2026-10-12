@@ -43,3 +43,6 @@ Thumbs.db
 # Claude Code (notes locales)
 CLAUDE.local.md
 .claude/settings.local.json
+
+# Captures et logs de Playwright MCP (vérifications manuelles)
+.playwright-mcp/

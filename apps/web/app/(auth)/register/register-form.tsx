@@ -1,5 +1,6 @@
 "use client";
 
+import { registerTenantSchema, type RegisterTenantInput } from "@deskflow/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -8,16 +9,15 @@ import { Button } from "@/components/ui/button";
 import { FieldError, FieldGroup } from "@/components/ui/field";
 import { apiFetch } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
-import { registerSchema, type RegisterValues } from "@/lib/auth/schemas";
 
 export function RegisterForm() {
   const router = useRouter();
-  const form = useForm<RegisterValues>({
-    resolver: zodResolver(registerSchema),
+  const form = useForm<RegisterTenantInput>({
+    resolver: zodResolver(registerTenantSchema),
     defaultValues: { organizationName: "", slug: "", name: "", email: "", password: "" },
   });
 
-  async function onSubmit(values: RegisterValues) {
+  async function onSubmit(values: RegisterTenantInput) {
     try {
       await apiFetch("/auth/register-tenant", { method: "POST", json: values });
       router.push(`/${values.slug}`);

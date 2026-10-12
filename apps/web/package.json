@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@deskflow/shared": "workspace:*",
     "@hookform/resolvers": "^5.9.1",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",

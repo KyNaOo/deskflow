@@ -96,7 +96,7 @@ describe('POST /auth/register-tenant (e2e)', () => {
       .send({ ...validBody(), slug: 'login' })
       .expect(400);
 
-    expect(response.body.message).toContain('ce slug est réservé');
+    expect(response.body.message).toContain('slug : Cet identifiant est réservé');
   });
 
   it('refuse un body invalide avec le détail des champs (400)', async () => {
