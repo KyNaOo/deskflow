@@ -26,7 +26,12 @@ export default async function TicketsPage({ params, searchParams }: PageProps<"/
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Tickets</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Tickets</h1>
+        <Button asChild>
+          <Link href={`${basePath}/new`}>Nouveau ticket</Link>
+        </Button>
+      </div>
 
       <TicketFiltersForm filters={filters} agents={agents} />
 

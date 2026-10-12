@@ -37,3 +37,13 @@ export interface TicketPage {
   items: Ticket[];
   nextCursor: string | null;
 }
+
+/** Message d'un ticket (GET /tickets/:number/messages) */
+export interface Message {
+  id: string;
+  body: string;
+  isInternalNote: boolean;
+  aiGenerated: boolean;
+  createdAt: string;
+  author: { id: string; name: string; role: Role };
+}
