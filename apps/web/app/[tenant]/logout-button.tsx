@@ -19,7 +19,7 @@ export function LogoutButton() {
   }
 
   return (
-    <Button variant="outline" onClick={logout} disabled={pending}>
+    <Button variant="outline" size="sm" onClick={logout} disabled={pending}>
       Se déconnecter
     </Button>
   );

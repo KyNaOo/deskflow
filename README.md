@@ -139,7 +139,7 @@ deskflow/
 │   │       └── users/    # liste des membres (isolation tenant), invitations
 │   └── web/              # Next.js App Router + Tailwind + shadcn/ui (Vitest, ESLint)
 │       ├── app/(auth)/   # connexion, inscription, acceptation d'invitation
-│       ├── app/[tenant]/ # pages privées d'une organisation
+│       ├── app/[tenant]/ # espace agents : liste des tickets (filtres dans l'URL)
 │       ├── lib/api/      # clients API navigateur (refresh transparent) et serveur
 │       └── proxy.ts      # redirection optimiste des pages privées sans session
 ├── packages/
@@ -169,6 +169,7 @@ deskflow/
 - **Messages et notes internes** : une note interne n'est jamais lue par un client, parce que le filtre est **dans la requête** (`isInternalNote = false`), pas appliqué après coup par le front. Les messages n'ont pas de `tenantId` : on y accède toujours à travers leur ticket, déjà filtré par tenant et par participant. Un message fait évoluer le ticket : la réponse d'un agent le passe en attente du client (`PENDING`) et pose `firstResponseAt` (indicateur du Jalon 6), celle du client le rouvre (`OPEN`). Ces transitions sont des mises à jour conditionnelles (`WHERE status IN (…)`), donc elles n'échouent jamais en cas d'action simultanée, et respectent la machine à états (vérifié par un test).
 - **Validation partagée** : les règles de validation (longueurs, formats, slugs réservés…) sont des schémas zod de `packages/shared`, écrits **une seule fois**. Le front les utilise dans ses formulaires (react-hook-form) et l'API pour valider les requêtes : une petite `ZodValidationPipe` globale et des DTO créés par `createZodDto(schema)`, ce qui laisse les contrôleurs écrire `@Body() dto: LoginDto`. Une erreur affichée sous un champ est donc exactement celle que l'API renverrait.
 - **Erreurs et logs** : toutes les erreurs sortent au même format (`{ statusCode, error, message, requestId }`), grâce à un filtre global. Une erreur inattendue renvoie un 500 générique : le détail ne quitte jamais le serveur. Les logs sont structurés en JSON avec `nestjs-pino`, une ligne par requête, avec le même `requestId` que la réponse et l'en-tête `X-Request-Id`. Les cookies et en-têtes d'authentification sont masqués. En dev, `pino-pretty` les rend lisibles : `docker compose logs -f api`.
+- **Liste des tickets côté front** : Server Component. Les tickets arrivent avec le HTML, sans écran de chargement ni appel API depuis le navigateur. Les **filtres vivent dans l'URL** (`/acme/tickets?status=OPEN&q=panne`) : une vue filtrée se partage, se met en favori et survit au rechargement. Le seul composant client est le formulaire de filtres, qui ne charge rien lui-même : il réécrit l'URL (`router.replace`, recherche avec *debounce*), et le Server Component relit la liste. L'URL est lue avec les mêmes schémas zod que l'API ; une valeur invalide est ignorée plutôt que de casser la page.
 - **Rate limiting** (`@nestjs/throttler`) sur la connexion et l'inscription uniquement : 5 tentatives par minute et par IP, puis **429**. Le compteur est vérifié avant la validation du body et avant toute lecture en base.
 - **SeaweedFS** en local pour le stockage objet : API S3, donc le même code fonctionne avec S3 / R2 en production (MinIO ne publie plus d'images Docker).
 
