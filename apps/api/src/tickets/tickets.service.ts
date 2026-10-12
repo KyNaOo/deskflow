@@ -1,10 +1,18 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { TenantContext } from '../common/tenant-context.js';
-import { Role } from '../generated/prisma/client.js';
+import { type Prisma, Role } from '../generated/prisma/client.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
+import { UpdateTicketDto } from './dto/update-ticket.dto.js';
 import { ticketSelect } from './ticket-select.js';
+import { transitionData } from './ticket-transition.js';
 
 @Injectable()
 export class TicketsService {
@@ -44,16 +52,61 @@ export class TicketsService {
   }
 
   /** Un client ne lit que ses propres tickets ; sinon 404, sans confirmer que le ticket existe. */
-  async findByNumber(reader: AuthenticatedUser, number: number) {
-    const ticket = await this.prisma.ticket.findFirst({
-      where: { number, ...(reader.role === Role.CUSTOMER && { customerId: reader.id }) },
-      select: ticketSelect,
+  findByNumber(reader: AuthenticatedUser, number: number) {
+    return this.getTicket({
+      number,
+      ...(reader.role === Role.CUSTOMER && { customerId: reader.id }),
     });
+  }
 
+  /** Statut (via la machine à états), priorité et assignation, modifiés par un agent. */
+  async update(number: number, dto: UpdateTicketDto) {
+    const ticket = await this.prisma.ticket.findFirst({
+      where: { number },
+      select: { id: true, status: true },
+    });
+    if (!ticket) {
+      throw new NotFoundException('Ticket introuvable');
+    }
+    if (dto.assigneeId) {
+      await this.assertAssignable(dto.assigneeId);
+    }
+
+    const changesStatus = dto.status !== undefined && dto.status !== ticket.status;
+    const { count } = await this.prisma.ticket.updateMany({
+      // Conditionnel sur le statut lu : si un autre agent l'a changé entre-temps, la transition
+      // a été vérifiée sur une valeur périmée et rien n'est modifié
+      where: { id: ticket.id, ...(changesStatus && { status: ticket.status }) },
+      data: {
+        priority: dto.priority,
+        assigneeId: dto.assigneeId,
+        ...(changesStatus && transitionData(ticket.status, dto.status!)),
+      },
+    });
+    if (count === 0) {
+      throw new ConflictException('Le ticket a été modifié entre-temps, rechargez-le');
+    }
+
+    return this.getTicket({ id: ticket.id });
+  }
+
+  private async getTicket(where: Prisma.TicketWhereInput) {
+    const ticket = await this.prisma.ticket.findFirst({ where, select: ticketSelect });
     if (!ticket) {
       throw new NotFoundException('Ticket introuvable');
     }
     return ticket;
+  }
+
+  /** Seul un agent ou un admin de l'organisation peut être assigné à un ticket. */
+  private async assertAssignable(userId: string) {
+    const assignee = await this.prisma.user.findFirst({
+      where: { id: userId, role: { in: [Role.ADMIN, Role.AGENT] } },
+      select: { id: true },
+    });
+    if (!assignee) {
+      throw new BadRequestException('assigneeId : aucun agent de l’organisation avec cet identifiant');
+    }
   }
 
   /** Un client ouvre toujours un ticket pour lui-même ; un agent l'ouvre pour un client du tenant. */

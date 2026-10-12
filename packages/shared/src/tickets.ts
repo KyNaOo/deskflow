@@ -9,6 +9,7 @@ export const TICKET_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 
 export const ticketPrioritySchema = z.enum(TICKET_PRIORITIES, 'Priorité invalide');
+export const ticketStatusSchema = z.enum(TICKET_STATUSES, 'Statut invalide');
 
 /** Message d'un ticket (premier message ou réponse) */
 export const messageBody = requiredText(10_000);
@@ -23,3 +24,14 @@ export const createTicketSchema = z.strictObject({
 });
 
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
+
+/** Modification d'un ticket par un agent : au moins un champ. `assigneeId: null` désassigne. */
+export const updateTicketSchema = z
+  .strictObject({
+    status: ticketStatusSchema.optional(),
+    priority: ticketPrioritySchema.optional(),
+    assigneeId: z.uuid('Identifiant d’agent invalide').nullable().optional(),
+  })
+  .refine((update) => Object.values(update).some((value) => value !== undefined), 'Aucune modification demandée');
+
+export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;

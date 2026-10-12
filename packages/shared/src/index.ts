@@ -7,4 +7,5 @@ z.config(z.locales.fr());
 export * from './auth.js';
 export * from './fields.js';
 export * from './roles.js';
+export * from './ticket-status.js';
 export * from './tickets.js';
