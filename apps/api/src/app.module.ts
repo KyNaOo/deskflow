@@ -11,6 +11,7 @@ import { ZodValidationPipe } from './common/zod-validation.js';
 import { type Env, validateEnv } from './config/env.js';
 import { HealthModule } from './health/health.module.js';
 import { MailModule } from './mail/mail.module.js';
+import { MessagesModule } from './messages/messages.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { TicketsModule } from './tickets/tickets.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module.js';
     AuthModule,
     UsersModule,
     TicketsModule,
+    MessagesModule,
   ],
   providers: [
     // Déclaré ici plutôt que dans main.ts pour s'appliquer aussi aux tests e2e

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createTicketSchema, listTicketsQuerySchema, updateTicketSchema } from './tickets.js';
+import {
+  createMessageSchema,
+  createTicketSchema,
+  listTicketsQuerySchema,
+  updateTicketSchema,
+} from './tickets.js';
 
 describe('createTicketSchema', () => {
   it('accepte un ticket minimal et retire les espaces superflus', () => {
@@ -54,5 +59,16 @@ describe('listTicketsQuerySchema', () => {
 
   it('refuse un paramètre inconnu', () => {
     expect(listTicketsQuerySchema.safeParse({ sort: 'asc' }).success).toBe(false);
+  });
+});
+
+describe('createMessageSchema', () => {
+  it('accepte une réponse ou une note interne', () => {
+    expect(createMessageSchema.parse({ body: ' Merci ' })).toEqual({ body: 'Merci' });
+    expect(createMessageSchema.parse({ body: 'Client VIP', isInternalNote: true }).isInternalNote).toBe(true);
+  });
+
+  it('refuse un message vide', () => {
+    expect(createMessageSchema.safeParse({ body: '   ' }).success).toBe(false);
   });
 });

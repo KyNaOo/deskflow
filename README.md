@@ -45,7 +45,7 @@ Créés par `bin/pnpm db:seed` dans l'organisation **Acme Corp** (`acme`), mot d
 | Agent | `agent@acme.test` |
 | Client | `client@acme.test` |
 
-Le seed crée aussi 50 tickets de démonstration (statuts, priorités et assignations variés) ouverts par le client, de quoi essayer filtres, recherche et pagination.
+Le seed crée aussi 50 tickets de démonstration (statuts, priorités et assignations variés) ouverts par le client, avec des réponses d'agent et une note interne sur le ticket n° 3 : de quoi essayer filtres, recherche, pagination et conversations.
 
 ## Services
 
@@ -132,6 +132,7 @@ deskflow/
 │   │   └── src/
 │   │       ├── auth/     # inscription, connexion, JWT + refresh tokens, guards, acceptation d'invitation
 │   │       ├── mail/     # envoi d'e-mails (Nodemailer → Mailpit en dev)
+│   │       ├── messages/ # conversation d'un ticket, notes internes, statut automatique
 │   │       ├── common/   # filtre d'erreurs, logs, validation zod, contexte tenant
 │   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
 │   │       ├── tickets/  # tickets : création (numérotation par tenant), liste (filtres, recherche, curseur), statut / priorité / assignation
@@ -165,6 +166,7 @@ deskflow/
 - **Liste des tickets : pagination par curseur** plutôt que par `OFFSET`. Le curseur (opaque, en base64url) contient la position du dernier ticket vu (`updatedAt`, `id`) : la page suivante reprend juste après, sans que PostgreSQL relise les pages précédentes, et un ticket créé entre deux pages ne décale pas la liste. L'`id` départage les tickets de même date. Un index `(tenant_id, updated_at DESC, id DESC)` sert cet ordre directement (vérifié avec `EXPLAIN` sur 20 000 tickets).
 - **Recherche plein texte** PostgreSQL plutôt qu'un moteur dédié. Une colonne `tsvector` est **générée** par la base à partir du sujet, donc jamais désynchronisée, et indexée en GIN. Elle utilise une configuration « français sans accents » : racinisation française (« impressions » trouve « impression ») et accents ignorés (« reseau » trouve « réseau »). Prisma ne sachant pas filtrer ce type, la recherche est la seule requête en SQL brut : paramétrée (aucune concaténation de la saisie), avec un filtre tenant écrit explicitement et couvert par un test d'isolation.
 - **Machine à états des statuts** : les transitions autorisées (`OPEN → PENDING → RESOLVED → CLOSED`, réouverture possible, `CLOSED` définitif) sont définies dans une seule table, dans `packages/shared`. L'API la fait respecter (409 sinon), et le front s'en servira pour ne proposer que les transitions possibles. Elle est testée sur toutes les paires de statuts. Le changement de statut est **conditionnel au statut lu** (`UPDATE … WHERE status = <lu>`) : si deux agents agissent en même temps, un seul l'emporte et l'autre reçoit 409, au lieu d'une transition validée sur une valeur périmée.
+- **Messages et notes internes** : une note interne n'est jamais lue par un client, parce que le filtre est **dans la requête** (`isInternalNote = false`), pas appliqué après coup par le front. Les messages n'ont pas de `tenantId` : on y accède toujours à travers leur ticket, déjà filtré par tenant et par participant. Un message fait évoluer le ticket : la réponse d'un agent le passe en attente du client (`PENDING`) et pose `firstResponseAt` (indicateur du Jalon 6), celle du client le rouvre (`OPEN`). Ces transitions sont des mises à jour conditionnelles (`WHERE status IN (…)`), donc elles n'échouent jamais en cas d'action simultanée, et respectent la machine à états (vérifié par un test).
 - **Validation partagée** : les règles de validation (longueurs, formats, slugs réservés…) sont des schémas zod de `packages/shared`, écrits **une seule fois**. Le front les utilise dans ses formulaires (react-hook-form) et l'API pour valider les requêtes : une petite `ZodValidationPipe` globale et des DTO créés par `createZodDto(schema)`, ce qui laisse les contrôleurs écrire `@Body() dto: LoginDto`. Une erreur affichée sous un champ est donc exactement celle que l'API renverrait.
 - **Erreurs et logs** : toutes les erreurs sortent au même format (`{ statusCode, error, message, requestId }`), grâce à un filtre global. Une erreur inattendue renvoie un 500 générique : le détail ne quitte jamais le serveur. Les logs sont structurés en JSON avec `nestjs-pino`, une ligne par requête, avec le même `requestId` que la réponse et l'en-tête `X-Request-Id`. Les cookies et en-têtes d'authentification sont masqués. En dev, `pino-pretty` les rend lisibles : `docker compose logs -f api`.
 - **Rate limiting** (`@nestjs/throttler`) sur la connexion et l'inscription uniquement : 5 tentatives par minute et par IP, puis **429**. Le compteur est vérifié avant la validation du body et avant toute lecture en base.

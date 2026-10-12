@@ -71,6 +71,21 @@ async function main() {
   const HOUR_IN_MS = 60 * 60 * 1000;
   for (const [index, ticket] of tickets.entries()) {
     const number = index + 1;
+    // Dates étalées sur les derniers jours : le ticket n° 1 est le plus ancien
+    const openedAt = new Date(Date.now() - (tickets.length - index) * 5 * HOUR_IN_MS);
+    // Un agent a déjà répondu à tout ticket qui n'est plus OPEN
+    const repliedAt = ticket.status === TicketStatus.OPEN ? null : new Date(openedAt.getTime() + HOUR_IN_MS);
+    const messages = [
+      { authorId: customer!.id, body: `Bonjour, ${ticket.subject.toLowerCase()}. Merci de votre aide.`, createdAt: openedAt },
+    ];
+    if (repliedAt) {
+      messages.push({
+        authorId: agent!.id,
+        body: 'Bonjour, merci pour votre message. Nous regardons cela et revenons vers vous rapidement.',
+        createdAt: repliedAt,
+      });
+    }
+
     await prisma.ticket.upsert({
       where: { tenantId_number: { tenantId: tenant.id, number } },
       update: {},
@@ -80,16 +95,26 @@ async function main() {
         subject: ticket.subject,
         priority: ticket.priority,
         status: ticket.status,
-        // Dates étalées sur les derniers jours : le ticket n° 1 est le plus ancien
-        createdAt: new Date(Date.now() - (tickets.length - index) * 5 * HOUR_IN_MS),
-        updatedAt: new Date(Date.now() - (tickets.length - index) * 5 * HOUR_IN_MS),
+        createdAt: openedAt,
+        updatedAt: repliedAt ?? openedAt,
+        firstResponseAt: repliedAt,
         customerId: customer!.id,
         assigneeId: ticket.assigned ? agent!.id : null,
-        resolvedAt: ticket.status === TicketStatus.RESOLVED ? new Date() : null,
-        messages: { create: { authorId: customer!.id, body: `Bonjour, ${ticket.subject.toLowerCase()}. Merci de votre aide.` } },
+        resolvedAt: ticket.status === TicketStatus.RESOLVED ? repliedAt : null,
+        messages: { create: messages },
       },
     });
   }
+
+  // Une note interne de démonstration, visible des agents seulement (ticket n° 3)
+  const ticket3 = await prisma.ticket.findUniqueOrThrow({ where: { tenantId_number: { tenantId: tenant.id, number: 3 } } });
+  const noteBody = 'Client important : lui proposer un appel si le problème persiste.';
+  if (!(await prisma.message.findFirst({ where: { ticketId: ticket3.id, body: noteBody } }))) {
+    await prisma.message.create({
+      data: { ticketId: ticket3.id, authorId: agent!.id, body: noteBody, isInternalNote: true },
+    });
+  }
+
   // Les prochains tickets créés par l'application continuent la numérotation
   await prisma.tenant.update({
     where: { id: tenant.id },

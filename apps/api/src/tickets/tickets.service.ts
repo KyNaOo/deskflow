@@ -13,6 +13,7 @@ import { CreateTicketDto } from './dto/create-ticket.dto.js';
 import { ListTicketsQueryDto } from './dto/list-tickets-query.dto.js';
 import { UpdateTicketDto } from './dto/update-ticket.dto.js';
 import { afterCursor, decodeCursor, encodeCursor, TICKET_LIST_ORDER } from './ticket-cursor.js';
+import { ticketAccessFilter } from './ticket-access.js';
 import { ticketSelect } from './ticket-select.js';
 import { transitionData } from './ticket-transition.js';
 
@@ -60,7 +61,7 @@ export class TicketsService {
   async list(reader: AuthenticatedUser, query: ListTicketsQueryDto) {
     const filters: Prisma.TicketWhereInput[] = [
       { status: query.status, priority: query.priority },
-      reader.role === Role.CUSTOMER ? { customerId: reader.id } : {},
+      ticketAccessFilter(reader),
       assigneeFilter(query.assignee, reader.id),
       query.q ? await this.searchFilter(query.q) : {},
       query.cursor ? afterCursor(decodeCursor(query.cursor)) : {},
@@ -84,10 +85,7 @@ export class TicketsService {
 
   /** Un client ne lit que ses propres tickets ; sinon 404, sans confirmer que le ticket existe. */
   findByNumber(reader: AuthenticatedUser, number: number) {
-    return this.getTicket({
-      number,
-      ...(reader.role === Role.CUSTOMER && { customerId: reader.id }),
-    });
+    return this.getTicket({ number, ...ticketAccessFilter(reader) });
   }
 
   /** Statut (via la machine à états), priorité et assignation, modifiés par un agent. */

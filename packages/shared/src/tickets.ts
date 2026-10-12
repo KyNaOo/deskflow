@@ -61,3 +61,11 @@ export const listTicketsQuerySchema = z.strictObject({
 });
 
 export type ListTicketsQuery = z.infer<typeof listTicketsQuerySchema>;
+
+export const createMessageSchema = z.strictObject({
+  body: messageBody,
+  /** Note interne : visible des agents uniquement */
+  isInternalNote: z.boolean().optional(),
+});
+
+export type CreateMessageInput = z.infer<typeof createMessageSchema>;
