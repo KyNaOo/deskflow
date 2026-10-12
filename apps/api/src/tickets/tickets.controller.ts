@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { Role } from '../generated/prisma/client.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
+import { ListTicketsQueryDto } from './dto/list-tickets-query.dto.js';
 import { UpdateTicketDto } from './dto/update-ticket.dto.js';
 import { TicketNumberPipe } from './ticket-number.pipe.js';
 import { TicketsService } from './tickets.service.js';
@@ -19,6 +20,11 @@ export class TicketsController {
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTicketDto) {
     return this.ticketsService.create(user, dto);
+  }
+
+  @Get()
+  list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListTicketsQueryDto) {
+    return this.ticketsService.list(user, query);
   }
 
   @Get(':number')

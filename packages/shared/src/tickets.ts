@@ -35,3 +35,29 @@ export const updateTicketSchema = z
   .refine((update) => Object.values(update).some((value) => value !== undefined), 'Aucune modification demandée');
 
 export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;
+
+export const TICKET_PAGE_SIZE = 20;
+export const MAX_TICKET_PAGE_SIZE = 50;
+
+/** Paramètre d'URL facultatif : une valeur vide (`?status=`, filtre « Tous ») vaut « pas de filtre ». */
+const urlParam = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
+/** Filtres de la liste des tickets (`GET /tickets?…`), lus aussi depuis l'URL par le front. */
+export const listTicketsQuerySchema = z.strictObject({
+  status: urlParam(ticketStatusSchema),
+  priority: urlParam(ticketPrioritySchema),
+  /** `me` (moi), `none` (non assigné) ou l'identifiant d'un agent */
+  assignee: urlParam(
+    z.union([z.literal('me'), z.literal('none'), z.uuid()], 'Assigné invalide : me, none ou un identifiant'),
+  ),
+  /** Recherche plein texte dans le sujet, ou numéro de ticket (`42`, `#42`) */
+  q: urlParam(z.string().trim().max(100, '100 caractères maximum')),
+  cursor: urlParam(z.string().max(200)),
+  limit: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.coerce.number().int().min(1).max(MAX_TICKET_PAGE_SIZE).default(TICKET_PAGE_SIZE),
+  ),
+});
+
+export type ListTicketsQuery = z.infer<typeof listTicketsQuerySchema>;

@@ -36,7 +36,7 @@ async function main() {
   }
   const [, agent, customer] = created;
 
-  const tickets = [
+  const tickets: { subject: string; priority: TicketPriority; status: TicketStatus; assigned?: boolean }[] = [
     { subject: 'Impossible de me connecter à mon compte', priority: TicketPriority.HIGH, status: TicketStatus.OPEN },
     { subject: 'Facture du mois de septembre introuvable', priority: TicketPriority.MEDIUM, status: TicketStatus.PENDING, assigned: true },
     { subject: 'Problème d’impression depuis la mise à jour', priority: TicketPriority.URGENT, status: TicketStatus.OPEN, assigned: true },
@@ -44,6 +44,31 @@ async function main() {
     { subject: 'Export CSV des données', priority: TicketPriority.MEDIUM, status: TicketStatus.CLOSED, assigned: true },
   ];
 
+  // Tickets supplémentaires pour remplir la liste (pagination, filtres, recherche)
+  const topics = [
+    'Mot de passe oublié',
+    'Erreur 500 sur la page de paiement',
+    'Demande de remboursement',
+    'Lenteurs sur le tableau de bord',
+    'Changement d’adresse de facturation',
+    'Panne réseau au bureau',
+    'Synchronisation du calendrier impossible',
+    'Question sur l’offre Pro',
+    'Notifications e-mail non reçues',
+    'Bug d’affichage sur mobile',
+  ];
+  const statuses = [TicketStatus.OPEN, TicketStatus.OPEN, TicketStatus.PENDING, TicketStatus.RESOLVED, TicketStatus.CLOSED];
+  const priorities = [TicketPriority.LOW, TicketPriority.MEDIUM, TicketPriority.MEDIUM, TicketPriority.HIGH, TicketPriority.URGENT];
+  for (let i = 0; i < 45; i++) {
+    tickets.push({
+      subject: `${topics[i % topics.length]} (${Math.floor(i / topics.length) + 1})`,
+      status: statuses[i % statuses.length]!,
+      priority: priorities[(i * 3) % priorities.length]!,
+      assigned: i % 4 !== 0,
+    });
+  }
+
+  const HOUR_IN_MS = 60 * 60 * 1000;
   for (const [index, ticket] of tickets.entries()) {
     const number = index + 1;
     await prisma.ticket.upsert({
@@ -55,6 +80,9 @@ async function main() {
         subject: ticket.subject,
         priority: ticket.priority,
         status: ticket.status,
+        // Dates étalées sur les derniers jours : le ticket n° 1 est le plus ancien
+        createdAt: new Date(Date.now() - (tickets.length - index) * 5 * HOUR_IN_MS),
+        updatedAt: new Date(Date.now() - (tickets.length - index) * 5 * HOUR_IN_MS),
         customerId: customer!.id,
         assigneeId: ticket.assigned ? agent!.id : null,
         resolvedAt: ticket.status === TicketStatus.RESOLVED ? new Date() : null,

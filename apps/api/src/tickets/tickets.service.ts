@@ -10,7 +10,9 @@ import { TenantContext } from '../common/tenant-context.js';
 import { type Prisma, Role } from '../generated/prisma/client.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
+import { ListTicketsQueryDto } from './dto/list-tickets-query.dto.js';
 import { UpdateTicketDto } from './dto/update-ticket.dto.js';
+import { afterCursor, decodeCursor, encodeCursor, TICKET_LIST_ORDER } from './ticket-cursor.js';
 import { ticketSelect } from './ticket-select.js';
 import { transitionData } from './ticket-transition.js';
 
@@ -51,6 +53,35 @@ export class TicketsService {
     });
   }
 
+  /**
+   * Liste filtrée et paginée par curseur. Un client ne voit que ses propres tickets : c'est
+   * aussi la liste « Mes tickets » du portail.
+   */
+  async list(reader: AuthenticatedUser, query: ListTicketsQueryDto) {
+    const filters: Prisma.TicketWhereInput[] = [
+      { status: query.status, priority: query.priority },
+      reader.role === Role.CUSTOMER ? { customerId: reader.id } : {},
+      assigneeFilter(query.assignee, reader.id),
+      query.q ? await this.searchFilter(query.q) : {},
+      query.cursor ? afterCursor(decodeCursor(query.cursor)) : {},
+    ];
+
+    // Un ticket de plus que demandé : s'il existe, il y a une page suivante
+    const tickets = await this.prisma.ticket.findMany({
+      where: { AND: filters },
+      orderBy: TICKET_LIST_ORDER,
+      take: query.limit + 1,
+      select: ticketSelect,
+    });
+
+    const items = tickets.slice(0, query.limit);
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor: tickets.length > query.limit && last ? encodeCursor(last) : null,
+    };
+  }
+
   /** Un client ne lit que ses propres tickets ; sinon 404, sans confirmer que le ticket existe. */
   findByNumber(reader: AuthenticatedUser, number: number) {
     return this.getTicket({
@@ -88,6 +119,23 @@ export class TicketsService {
     }
 
     return this.getTicket({ id: ticket.id });
+  }
+
+  /** Un numéro (`42`, `#42`) désigne un ticket précis ; sinon recherche plein texte dans le sujet. */
+  private async searchFilter(q: string): Promise<Prisma.TicketWhereInput> {
+    const number = /^#?(\d{1,9})$/.exec(q)?.[1];
+    if (number) {
+      return { number: Number(number) };
+    }
+
+    // SQL brut : Prisma ne sait pas filtrer une colonne tsvector. Le filtre tenant, ajouté
+    // automatiquement à toutes les autres requêtes, doit donc être écrit ici, explicitement.
+    // Valeurs paramétrées par le template $queryRaw : aucune concaténation de la saisie.
+    const matches = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM tickets
+      WHERE tenant_id = ${this.tenantContext.tenantId}::uuid
+        AND search_vector @@ websearch_to_tsquery('french_unaccent', ${q})`;
+    return { id: { in: matches.map(({ id }) => id) } };
   }
 
   private async getTicket(where: Prisma.TicketWhereInput) {
@@ -130,4 +178,14 @@ export class TicketsService {
     }
     return customer.id;
   }
+}
+
+function assigneeFilter(assignee: string | undefined, readerId: string): Prisma.TicketWhereInput {
+  if (assignee === 'me') {
+    return { assigneeId: readerId };
+  }
+  if (assignee === 'none') {
+    return { assigneeId: null };
+  }
+  return assignee ? { assigneeId: assignee } : {};
 }

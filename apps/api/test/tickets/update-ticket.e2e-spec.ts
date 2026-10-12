@@ -99,7 +99,7 @@ describe('PATCH /tickets/:number — statut, priorité, assignation (e2e)', () =
       ]);
 
       // Selon l'ordre : update conditionnel refusé, ou transition RESOLVED → PENDING interdite
-      expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+      expect(responses.map((response) => response.status).sort((a, b) => a - b)).toEqual([200, 409]);
       const winner = responses.find((response) => response.status === 200)!;
       const { body } = await patch(number, { priority: 'LOW' }).expect(200);
       expect(body.status).toBe(winner.body.status);

@@ -126,6 +126,10 @@ model Ticket {
   resolvedAt      DateTime?      @map("resolved_at")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
+  // Recherche plein texte : colonne générée par PostgreSQL à partir du sujet (voir la migration
+  // add_ticket_search). Type inconnu de Prisma : filtrée uniquement en SQL brut. Le dbgenerated
+  // reprend l'expression de la colonne, sans quoi Prisma voudrait la supprimer à chaque migration.
+  searchVector    Unsupported("tsvector")? @default(dbgenerated("to_tsvector('french_unaccent'::regconfig, subject)")) @map("search_vector")
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // Cascade : supprimer un tenant supprime ses utilisateurs et ses tickets par deux chemins à la
@@ -136,8 +140,11 @@ model Ticket {
   messages Message[]
 
   @@unique([tenantId, number])
+  // Liste des tickets : ordre de la pagination par curseur, avec ou sans filtre de statut
+  @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
   @@index([tenantId, status, updatedAt])
   @@index([tenantId, assigneeId])
+  @@index([searchVector], type: Gin)
   @@map("tickets")
 }
 
