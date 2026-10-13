@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { LogoutButton } from "@/components/logout-button";
 import { getProfile } from "@/lib/api/profile";
-import { LogoutButton } from "./logout-button";
+import { homePath } from "@/lib/auth/paths";
 import { MainNav } from "./main-nav";
 
 /** Espace des agents et admins d'une organisation. */
@@ -15,7 +16,7 @@ export default async function TenantLayout({ children, params }: LayoutProps<"/[
   }
   // Les clients ont leur propre espace : le portail de l'organisation
   if (profile.role === "CUSTOMER") {
-    redirect(`/portal/${tenant}`);
+    redirect(homePath(profile.role, tenant));
   }
 
   return (

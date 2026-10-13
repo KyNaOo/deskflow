@@ -10,6 +10,12 @@ export interface Profile {
   tenant: { name: string; slug: string };
 }
 
+/** Organisation, telle qu'affichée sur son portail public (GET /tenants/:slug) */
+export interface PublicTenant {
+  name: string;
+  slug: string;
+}
+
 /** Utilisateur de l'organisation (GET /users) */
 export interface Member {
   id: string;

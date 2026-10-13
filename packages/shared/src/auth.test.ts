@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inviteUserSchema, loginSchema, registerTenantSchema } from './auth.js';
+import { inviteUserSchema, loginSchema, registerCustomerSchema, registerTenantSchema } from './auth.js';
 
 const validTenant = {
   organizationName: 'Acme Corp',
@@ -57,5 +57,17 @@ describe('inviteUserSchema', () => {
     expect(inviteUserSchema.safeParse({ email: 'c@acme.test', role: 'CUSTOMER' }).success).toBe(
       false,
     );
+  });
+});
+
+describe('registerCustomerSchema', () => {
+  const customer = { tenantSlug: 'Acme', name: 'Chloé', email: 'chloe@client.test', password: 'correct-horse' };
+
+  it('normalise le slug de l’organisation', () => {
+    expect(registerCustomerSchema.parse(customer).tenantSlug).toBe('acme');
+  });
+
+  it('refuse un rôle fourni par le client', () => {
+    expect(registerCustomerSchema.safeParse({ ...customer, role: 'ADMIN' }).success).toBe(false);
   });
 });

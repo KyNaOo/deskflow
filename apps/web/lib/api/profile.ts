@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { serverFetch } from "./server";
+import { serverFetch, serverFetchIfSignedIn } from "./server";
 import type { Profile } from "./types";
 
 /**
@@ -7,3 +7,6 @@ import type { Profile } from "./types";
  * le demandent tous les deux (React.cache).
  */
 export const getProfile = cache(() => serverFetch<Profile>("/auth/me"));
+
+/** Même chose sur une page publique : `null` si personne n'est connecté. */
+export const getOptionalProfile = cache(() => serverFetchIfSignedIn<Profile>("/auth/me"));

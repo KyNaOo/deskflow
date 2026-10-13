@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RelativeTime } from "@/components/relative-time";
+import { MessageThread } from "@/components/tickets/message-thread";
+import { ReplyForm } from "@/components/tickets/reply-form";
 import { PriorityBadge, StatusBadge } from "@/components/tickets/ticket-badges";
 import { serverFetch } from "@/lib/api/server";
 import type { Member, Message, Ticket } from "@/lib/api/types";
-import { MessageThread } from "./message-thread";
-import { ReplyForm } from "./reply-form";
 import { TicketActions } from "./ticket-actions";
 
 export async function generateMetadata({ params }: PageProps<"/[tenant]/tickets/[number]">): Promise<Metadata> {
@@ -57,7 +57,7 @@ export default async function TicketPage({ params }: PageProps<"/[tenant]/ticket
               Ce ticket est clos : il n’est plus possible d’y répondre.
             </p>
           ) : (
-            <ReplyForm ticketNumber={ticket.number} />
+            <ReplyForm ticketNumber={ticket.number} allowInternalNote />
           )}
         </section>
 

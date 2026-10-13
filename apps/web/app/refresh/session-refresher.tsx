@@ -3,13 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { refreshSession } from "@/lib/api/client";
+import { loginPathFor } from "@/lib/auth/paths";
 
 export function SessionRefresher({ next }: { next: string }) {
   const router = useRouter();
 
   useEffect(() => {
     // Le double appel de l'effet en développement (StrictMode) partage la même promesse
-    void refreshSession().then((renewed) => router.replace(renewed ? next : "/login"));
+    void refreshSession().then((renewed) => router.replace(renewed ? next : loginPathFor(next)));
   }, [next, router]);
 
   return (

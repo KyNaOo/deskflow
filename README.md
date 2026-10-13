@@ -4,7 +4,7 @@
 
 Help desk SaaS multi-tenant avec assistant IA : tickets, chat temps réel entre clients et agents, suggestions de réponse basées sur la base de connaissances de chaque organisation (RAG).
 
-> 🚧 Projet en cours de construction — Jalons 0 (socle) et 1 (authentification et multi-tenant) terminés, prochaine étape : tickets et messages.
+> 🚧 Projet en cours de construction — Jalons 0 (socle), 1 (authentification et multi-tenant) et 2 (tickets et messages) terminés, prochaine étape : temps réel et pièces jointes.
 
 **Stack :** TypeScript · NestJS · Next.js · PostgreSQL + pgvector · Redis · BullMQ · Socket.io · Docker · Turborepo
 
@@ -44,6 +44,9 @@ Créés par `bin/pnpm db:seed` dans l'organisation **Acme Corp** (`acme`), mot d
 | Admin | `admin@acme.test` |
 | Agent | `agent@acme.test` |
 | Client | `client@acme.test` |
+
+- **Espace agents** : http://localhost:3000/login (organisation `acme`, compte admin ou agent)
+- **Portail client** : http://localhost:3000/portal/acme (compte client, ou créez-en un)
 
 Le seed crée aussi 50 tickets de démonstration (statuts, priorités et assignations variés) ouverts par le client, avec des réponses d'agent et une note interne sur le ticket n° 3 : de quoi essayer filtres, recherche, pagination et conversations.
 
@@ -139,6 +142,7 @@ deskflow/
 │   │       └── users/    # liste des membres (isolation tenant), invitations
 │   └── web/              # Next.js App Router + Tailwind + shadcn/ui (Vitest, ESLint)
 │       ├── app/(auth)/   # connexion, inscription, acceptation d'invitation
+│       ├── app/portal/[tenant]/ # portail client : inscription, mes demandes, conversation
 │       ├── app/[tenant]/ # espace agents : liste (filtres dans l'URL), détail, nouveau ticket
 │       ├── lib/api/      # clients API navigateur (refresh transparent) et serveur
 │       └── proxy.ts      # redirection optimiste des pages privées sans session
@@ -171,6 +175,7 @@ deskflow/
 - **Erreurs et logs** : toutes les erreurs sortent au même format (`{ statusCode, error, message, requestId }`), grâce à un filtre global. Une erreur inattendue renvoie un 500 générique : le détail ne quitte jamais le serveur. Les logs sont structurés en JSON avec `nestjs-pino`, une ligne par requête, avec le même `requestId` que la réponse et l'en-tête `X-Request-Id`. Les cookies et en-têtes d'authentification sont masqués. En dev, `pino-pretty` les rend lisibles : `docker compose logs -f api`.
 - **Liste des tickets côté front** : Server Component. Les tickets arrivent avec le HTML, sans écran de chargement ni appel API depuis le navigateur. Les **filtres vivent dans l'URL** (`/acme/tickets?status=OPEN&q=panne`) : une vue filtrée se partage, se met en favori et survit au rechargement. Le seul composant client est le formulaire de filtres, qui ne charge rien lui-même : il réécrit l'URL (`router.replace`, recherche avec *debounce*), et le Server Component relit la liste. L'URL est lue avec les mêmes schémas zod que l'API ; une valeur invalide est ignorée plutôt que de casser la page.
 - **Détail d'un ticket** : la page est lue côté serveur (ticket, conversation, agents). Les actions (réponse ou note interne, statut, priorité, assignation) sont de petits composants clients qui appellent l'API puis relisent la page (`router.refresh()`), sans état local à synchroniser. Le sélecteur de statut ne propose que les transitions autorisées, grâce à la machine à états partagée. Si un autre agent a changé le ticket entre-temps, l'erreur de l'API (409) s'affiche et la page relit l'état réel. Le cache TanStack Query et l'affichage immédiat (*optimistic update*) arrivent au Jalon 3 avec le temps réel.
+- **Portail client** : chaque organisation a un portail public (`/portal/acme`) où ses clients créent eux-mêmes leur compte (`POST /auth/register-customer`, toujours avec le rôle `CUSTOMER` : un rôle envoyé dans la requête est refusé), ouvrent des demandes et suivent la conversation. Il n'y a pas d'API dédiée : les mêmes routes que les agents (`GET /tickets`, messages…) renvoient au client ses seuls tickets, sans les notes internes. Après la connexion, chacun est redirigé selon son rôle (client → portail, agent → son espace), et une session expirée sur le portail renvoie vers la connexion du portail.
 - **Rate limiting** (`@nestjs/throttler`) sur la connexion et l'inscription uniquement : 5 tentatives par minute et par IP, puis **429**. Le compteur est vérifié avant la validation du body et avant toute lecture en base.
 - **SeaweedFS** en local pour le stockage objet : API S3, donc le même code fonctionne avec S3 / R2 en production (MinIO ne publie plus d'images Docker).
 
@@ -199,7 +204,7 @@ deskflow/
 - [x] Jalon 0 — Endpoint `/health` (`@nestjs/terminus`) + healthcheck Docker
 - [x] Jalon 0 — CI GitHub Actions : lint → typecheck → tests → build → tests e2e sur un vrai Postgres
 - [x] Jalon 1 — Authentification et multi-tenant : inscription, JWT + refresh tokens (rotation, détection de vol), guards, isolation tenant, invitations, rate limiting, pages front
-- [ ] Jalon 2 — Tickets et messages
+- [x] Jalon 2 — Tickets et messages : numérotation par tenant, machine à états, liste (filtres, recherche plein texte, curseur), messages et notes internes, erreurs et logs, espace agents et portail client
 - [ ] Jalon 3 — Temps réel et pièces jointes
 - [ ] Jalon 4 — Traitements asynchrones
 - [ ] Jalon 5 — Assistant IA (RAG)

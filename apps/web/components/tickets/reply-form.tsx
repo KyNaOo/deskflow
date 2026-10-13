@@ -16,7 +16,13 @@ const MODES = [
   { value: true, label: "Note interne" },
 ] as const;
 
-export function ReplyForm({ ticketNumber }: { ticketNumber: number }) {
+interface ReplyFormProps {
+  ticketNumber: number;
+  /** Agents uniquement : un client ne peut pas écrire de note interne (refusé par l'API) */
+  allowInternalNote?: boolean;
+}
+
+export function ReplyForm({ ticketNumber, allowInternalNote = false }: ReplyFormProps) {
   const router = useRouter();
   const form = useForm<CreateMessageInput>({
     resolver: zodResolver(createMessageSchema),
@@ -37,7 +43,8 @@ export function ReplyForm({ ticketNumber }: { ticketNumber: number }) {
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex flex-col gap-3">
-      <Controller
+      {allowInternalNote && (
+        <Controller
         control={form.control}
         name="isInternalNote"
         render={({ field }) => (
@@ -63,7 +70,8 @@ export function ReplyForm({ ticketNumber }: { ticketNumber: number }) {
             ))}
           </fieldset>
         )}
-      />
+        />
+      )}
 
       <Controller
         control={form.control}
@@ -77,7 +85,7 @@ export function ReplyForm({ ticketNumber }: { ticketNumber: number }) {
               {...field}
               id="reply-body"
               rows={4}
-              placeholder={isInternalNote ? "Visible uniquement par l’équipe" : "Votre réponse au client"}
+              placeholder={isInternalNote ? "Visible uniquement par l’équipe" : allowInternalNote ? "Votre réponse au client" : "Votre message"}
               aria-invalid={fieldState.invalid}
               aria-describedby={fieldState.invalid ? "reply-body-error" : undefined}
               className={cn(isInternalNote && "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950")}
@@ -89,7 +97,7 @@ export function ReplyForm({ ticketNumber }: { ticketNumber: number }) {
 
       <FieldError errors={[form.formState.errors.root]} />
       <Button type="submit" className="self-end" disabled={form.formState.isSubmitting}>
-        {isInternalNote ? "Ajouter la note" : "Envoyer la réponse"}
+        {isInternalNote ? "Ajouter la note" : allowInternalNote ? "Envoyer la réponse" : "Envoyer"}
       </Button>
     </form>
   );

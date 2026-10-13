@@ -38,6 +38,15 @@ describe('Rate limiting de l’authentification (e2e)', () => {
     await attempt().expect(429);
   });
 
+  it('bloque l’inscription client après 5 tentatives par minute (429)', async () => {
+    const attempt = () => request(app.getHttpServer()).post('/auth/register-customer').send({});
+
+    for (let i = 0; i < AUTH_RATE_LIMIT.limit; i++) {
+      await attempt().expect(400);
+    }
+    await attempt().expect(429);
+  });
+
   it('ne limite pas les autres routes', async () => {
     for (let i = 0; i <= AUTH_RATE_LIMIT.limit; i++) {
       await request(app.getHttpServer()).post('/auth/logout').expect(204);

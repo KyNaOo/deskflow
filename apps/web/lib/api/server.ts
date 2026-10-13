@@ -12,14 +12,27 @@ const API_URL = process.env.API_URL;
  * Une ressource introuvable (404, y compris celle d'un autre tenant) affiche la page « introuvable ».
  */
 export async function serverFetch<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    headers: { Cookie: (await cookies()).toString() },
-    cache: "no-store",
-  });
-
+  const response = await send(path);
   if (response.status === 401) {
     redirect("/refresh");
   }
+  return read<T>(response);
+}
+
+/** Pour une page publique (portail) : `null` sans session valide, au lieu d'une redirection. */
+export async function serverFetchIfSignedIn<T>(path: string): Promise<T | null> {
+  const response = await send(path);
+  return response.status === 401 ? null : read<T>(response);
+}
+
+async function send(path: string): Promise<Response> {
+  return fetch(`${API_URL}${path}`, {
+    headers: { Cookie: (await cookies()).toString() },
+    cache: "no-store",
+  });
+}
+
+async function read<T>(response: Response): Promise<T> {
   if (response.status === 404) {
     notFound();
   }

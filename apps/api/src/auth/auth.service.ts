@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { hash, verify } from '@node-rs/argon2';
@@ -10,6 +11,7 @@ import { isUniqueConstraintViolation } from '../prisma/prisma-errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AcceptInvitationDto } from './dto/accept-invitation.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { RegisterCustomerDto } from './dto/register-customer.dto.js';
 import { RegisterTenantDto } from './dto/register-tenant.dto.js';
 import { publicUserSelect } from './public-user.js';
 import { hashSecretToken } from './secret-token.js';
@@ -63,6 +65,42 @@ export class AuthService {
 
     const tokens = await this.tokenService.issueTokens(account.user);
     return { ...account, tokens };
+  }
+
+  /**
+   * Inscription d'un client depuis le portail de son organisation, puis connexion.
+   * Le rôle est fixé ici : jamais lu depuis la requête.
+   */
+  async registerCustomer(dto: RegisterCustomerDto) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { slug: dto.tenantSlug },
+      select: { id: true },
+    });
+    if (!tenant) {
+      throw new NotFoundException('Organisation introuvable');
+    }
+
+    let user;
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          tenantId: tenant.id,
+          name: dto.name,
+          email: dto.email,
+          passwordHash: await hash(dto.password),
+          role: Role.CUSTOMER,
+        },
+        select: publicUserSelect,
+      });
+    } catch (error) {
+      if (isUniqueConstraintViolation(error)) {
+        throw new ConflictException('Un compte existe déjà avec cet e-mail dans cette organisation');
+      }
+      throw error;
+    }
+
+    const tokens = await this.tokenService.issueTokens(user);
+    return { user, tokens };
   }
 
   async login(dto: LoginDto) {

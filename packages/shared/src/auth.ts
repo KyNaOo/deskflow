@@ -32,6 +32,14 @@ export const loginSchema = z.strictObject({
   password: z.string().min(1, 'Champ obligatoire').max(128, '128 caractères maximum'),
 });
 
+/** Inscription d'un client depuis le portail de son organisation : toujours le rôle CUSTOMER. */
+export const registerCustomerSchema = z.strictObject({
+  tenantSlug: z.string().trim().toLowerCase().min(1, 'Champ obligatoire'),
+  name: requiredText(100),
+  email,
+  password: newPassword,
+});
+
 export const acceptInvitationSchema = z.strictObject({
   /** Jeton reçu dans le lien de l'e-mail d'invitation */
   token: z.string().min(1, 'Champ obligatoire').max(100),
@@ -46,5 +54,6 @@ export const inviteUserSchema = z.strictObject({
 
 export type RegisterTenantInput = z.infer<typeof registerTenantSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type RegisterCustomerInput = z.infer<typeof registerCustomerSchema>;
 export type AcceptInvitationInput = z.infer<typeof acceptInvitationSchema>;
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;

@@ -22,6 +22,7 @@ import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { AcceptInvitationDto } from './dto/accept-invitation.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { RegisterCustomerDto } from './dto/register-customer.dto.js';
 import { RegisterTenantDto } from './dto/register-tenant.dto.js';
 import { TokenService } from './token.service.js';
 
@@ -48,6 +49,19 @@ export class AuthController {
     const { tokens, ...account } = await this.authService.registerTenant(dto);
     setAuthCookies(res, tokens, this.secureCookies);
     return account;
+  }
+
+  // Même limite que la connexion : sinon, inscription en boucle pour tester des e-mails
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Post('register-customer')
+  async registerCustomer(
+    @Body() dto: RegisterCustomerDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { tokens, user } = await this.authService.registerCustomer(dto);
+    setAuthCookies(res, tokens, this.secureCookies);
+    return { user };
   }
 
   @Public()

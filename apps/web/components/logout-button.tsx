@@ -5,7 +5,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api/client";
 
-export function LogoutButton() {
+/** Déconnexion, puis retour à la page de connexion (celle du portail pour un client). */
+export function LogoutButton({ redirectTo = "/login" }: { redirectTo?: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -14,7 +15,9 @@ export function LogoutButton() {
     try {
       await apiFetch("/auth/logout", { method: "POST" });
     } finally {
-      router.replace("/login");
+      // La session a changé : les layouts déjà affichés (en-tête…) doivent être relus
+      router.replace(redirectTo);
+      router.refresh();
     }
   }
 

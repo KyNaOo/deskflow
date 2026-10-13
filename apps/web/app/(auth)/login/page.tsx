@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LoginForm } from "./login-form";
+import { LoginForm } from "@/components/login-form";
 
 export const metadata: Metadata = { title: "Connexion · Deskflow" };
 
