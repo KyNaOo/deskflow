@@ -34,5 +34,7 @@ import { TokenService } from './token.service.js';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
+  // Vérification des access tokens, réutilisée par la gateway WebSocket
+  exports: [TokenService],
 })
 export class AuthModule {}

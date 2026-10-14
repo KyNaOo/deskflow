@@ -9,6 +9,7 @@ import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { TenantContext } from '../common/tenant-context.js';
 import { type Prisma, Role } from '../generated/prisma/client.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
 import { ListTicketsQueryDto } from './dto/list-tickets-query.dto.js';
 import { UpdateTicketDto } from './dto/update-ticket.dto.js';
@@ -22,6 +23,7 @@ export class TicketsService {
   constructor(
     @Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma,
     private readonly tenantContext: TenantContext,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /** Ouvre un ticket et enregistre sa description comme premier message (les deux, ou rien). */
@@ -29,7 +31,7 @@ export class TicketsService {
     const customerId = await this.resolveCustomerId(author, dto.customerId);
     const tenantId = this.tenantContext.tenantId;
 
-    return this.prisma.$transaction(async (tx) => {
+    const ticket = await this.prisma.$transaction(async (tx) => {
       // Incrément atomique (UPDATE … SET ticket_counter = ticket_counter + 1 RETURNING) :
       // la ligne du tenant reste verrouillée jusqu'à la fin de la transaction, donc deux
       // créations simultanées obtiennent forcément deux numéros différents.
@@ -52,6 +54,9 @@ export class TicketsService {
         select: ticketSelect,
       });
     });
+
+    this.realtime.ticketCreated(ticket);
+    return ticket;
   }
 
   /**
@@ -116,7 +121,9 @@ export class TicketsService {
       throw new ConflictException('Le ticket a été modifié entre-temps, rechargez-le');
     }
 
-    return this.getTicket({ id: ticket.id });
+    const updated = await this.getTicket({ id: ticket.id });
+    this.realtime.ticketUpdated(updated);
+    return updated;
   }
 
   /** Un numéro (`42`, `#42`) désigne un ticket précis ; sinon recherche plein texte dans le sujet. */

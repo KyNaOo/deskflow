@@ -1,12 +1,11 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { JwtService } from '@nestjs/jwt';
 import { ClsService } from 'nestjs-cls';
 import type { TenantStore } from '../../common/tenant-store.js';
 import { ACCESS_TOKEN_COOKIE } from '../auth.constants.js';
 import type { AuthenticatedRequest } from '../authenticated-user.js';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
-import type { AccessTokenPayload } from '../token.service.js';
+import { TokenService } from '../token.service.js';
 
 /**
  * Guard global : toute route exige un access token valide, sauf celles marquées @Public().
@@ -17,7 +16,7 @@ import type { AccessTokenPayload } from '../token.service.js';
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly jwt: JwtService,
+    private readonly tokens: TokenService,
     private readonly cls: ClsService<TenantStore>,
   ) {}
 
@@ -26,26 +25,19 @@ export class JwtAuthGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (isPublic) {
+    // Un socket est authentifié une fois pour toutes au handshake (RealtimeGateway)
+    if (isPublic || context.getType() === 'ws') {
       return true;
     }
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const token: unknown = request.cookies?.[ACCESS_TOKEN_COOKIE];
-    if (typeof token !== 'string') {
+    const user = await this.tokens.verifyAccessToken(request.cookies?.[ACCESS_TOKEN_COOKIE]);
+    if (!user) {
       throw new UnauthorizedException();
     }
 
-    let payload: AccessTokenPayload;
-    try {
-      // Vérifie la signature et l'expiration : aucune lecture en base
-      payload = await this.jwt.verifyAsync<AccessTokenPayload>(token);
-    } catch {
-      throw new UnauthorizedException();
-    }
-
-    request.user = { id: payload.sub, tenantId: payload.tenantId, role: payload.role };
-    this.cls.set('tenantId', payload.tenantId);
+    request.user = user;
+    this.cls.set('tenantId', user.tenantId);
     return true;
   }
 }

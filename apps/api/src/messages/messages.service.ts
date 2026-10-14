@@ -2,7 +2,9 @@ import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundExce
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { type Prisma, Role, TicketStatus } from '../generated/prisma/client.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { ticketAccessFilter } from '../tickets/ticket-access.js';
+import { ticketSelect } from '../tickets/ticket-select.js';
 import { automaticTransition } from './automatic-transition.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
 
@@ -21,7 +23,10 @@ const messageSelect = {
  */
 @Injectable()
 export class MessagesService {
-  constructor(@Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma) {}
+  constructor(
+    @Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   /** Conversation dans l'ordre chronologique. Un client ne reçoit jamais les notes internes. */
   async list(reader: AuthenticatedUser, ticketNumber: number) {
@@ -48,7 +53,7 @@ export class MessagesService {
     const ticket = await this.findTicket(author, ticketNumber);
     const now = new Date();
 
-    return this.prisma.$transaction(async (tx) => {
+    const message = await this.prisma.$transaction(async (tx) => {
       // Fait remonter le ticket dans la liste et verrouille sa ligne jusqu'à la fin de la
       // transaction ; conditionnel : rien n'est écrit sur un ticket clos, même entre-temps
       const { count } = await tx.ticket.updateMany({
@@ -84,12 +89,22 @@ export class MessagesService {
 
       return message;
     });
+
+    this.realtime.messageCreated(ticket, message);
+    if (!isInternalNote) {
+      // Statut et date de première réponse ont pu changer. Pas pour une note interne : le client
+      // verrait le ticket bouger et devinerait qu'on écrit sur lui.
+      this.realtime.ticketUpdated(
+        await this.prisma.ticket.findFirstOrThrow({ where: { id: ticket.id }, select: ticketSelect }),
+      );
+    }
+    return message;
   }
 
   private async findTicket(reader: AuthenticatedUser, number: number) {
     const ticket = await this.prisma.ticket.findFirst({
       where: { number, ...ticketAccessFilter(reader) },
-      select: { id: true },
+      select: { id: true, number: true },
     });
     if (!ticket) {
       throw new NotFoundException('Ticket introuvable');

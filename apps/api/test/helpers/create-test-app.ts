@@ -4,6 +4,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { Logger } from 'nestjs-pino';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
+import { RealtimeIoAdapter } from '../../src/realtime/realtime-io.adapter.js';
 
 interface TestAppOptions {
   /** À désactiver dans les suites qui enchaînent plus de connexions/inscriptions que la limite. */
@@ -24,6 +25,7 @@ export async function createTestApp({ rateLimit = true }: TestAppOptions = {}): 
   });
   // Même logger qu'en production (muet pendant les tests, voir loggerConfig)
   app.useLogger(app.get(Logger));
+  app.useWebSocketAdapter(new RealtimeIoAdapter(app));
   // Port libre choisi par l'OS : supertest réutilise ce serveur au lieu d'en démarrer un par requête
   await app.listen(0);
   return app;

@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import type { Env } from './config/env.js';
+import { RealtimeIoAdapter } from './realtime/realtime-io.adapter.js';
 
 async function bootstrap() {
   // Logs du démarrage mis en attente puis écrits par pino, comme tous les autres
@@ -17,6 +18,8 @@ async function bootstrap() {
     credentials: true,
     exposedHeaders: ['X-Request-Id'],
   });
+
+  app.useWebSocketAdapter(new RealtimeIoAdapter(app));
 
   await app.listen(config.get('PORT', { infer: true }));
 }

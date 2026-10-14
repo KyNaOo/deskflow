@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Prisma, User } from '../generated/prisma/client.js';
+import type { AuthenticatedUser } from './authenticated-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { REFRESH_TOKEN_TTL_DAYS } from './auth.constants.js';
 import { generateSecretToken, hashSecretToken } from './secret-token.js';
@@ -28,6 +29,22 @@ export class TokenService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
   ) {}
+
+  /**
+   * Vérifie la signature et l'expiration d'un access token, sans lecture en base.
+   * Partagé par JwtAuthGuard (requêtes HTTP) et la gateway WebSocket (handshake).
+   */
+  async verifyAccessToken(token: unknown): Promise<AuthenticatedUser | null> {
+    if (typeof token !== 'string') {
+      return null;
+    }
+    try {
+      const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token);
+      return { id: payload.sub, tenantId: payload.tenantId, role: payload.role };
+    } catch {
+      return null;
+    }
+  }
 
   /** Ouvre une nouvelle session : le refresh token démarre une nouvelle famille. */
   async issueTokens(user: TokenOwner): Promise<AuthTokens> {
