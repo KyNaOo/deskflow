@@ -1,8 +1,8 @@
 "use client";
 
 import { TICKET_PRIORITIES, type UpdateTicketInput } from "@deskflow/shared";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { FieldError } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -10,6 +10,7 @@ import { apiFetch } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import type { Member, Ticket } from "@/lib/api/types";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/tickets/labels";
+import { ticketKeys } from "@/lib/tickets/query-keys";
 import { statusOptions } from "@/lib/tickets/status-options";
 
 interface TicketActionsProps {
@@ -17,25 +18,25 @@ interface TicketActionsProps {
   agents: Pick<Member, "id" | "name">[];
 }
 
-/** Statut, priorité et assignation : chaque changement est enregistré aussitôt, puis la page relue. */
+/** Statut, priorité et assignation : chaque changement est enregistré aussitôt, puis reporté dans le cache. */
 export function TicketActions({ ticket, agents }: TicketActionsProps) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
+  const ticketKey = ticketKeys.detail(ticket.number);
   const [error, setError] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const [isRefreshing, startTransition] = useTransition();
-  const busy = saving || isRefreshing;
+  const [busy, setBusy] = useState(false);
 
   async function update(changes: UpdateTicketInput) {
     setError(undefined);
-    setSaving(true);
+    setBusy(true);
     try {
-      await apiFetch(`/tickets/${ticket.number}`, { method: "PATCH", json: changes });
+      const updated = await apiFetch<Ticket>(`/tickets/${ticket.number}`, { method: "PATCH", json: changes });
+      queryClient.setQueryData(ticketKey, updated);
     } catch (caught) {
       // Ex. un autre agent a changé le statut entre-temps (409) : on affiche et on relit l'état réel
       setError(errorMessage(caught));
+      await queryClient.invalidateQueries({ queryKey: ticketKey, exact: true });
     } finally {
-      setSaving(false);
-      startTransition(() => router.refresh());
+      setBusy(false);
     }
   }
 

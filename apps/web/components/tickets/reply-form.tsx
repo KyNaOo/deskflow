@@ -1,14 +1,16 @@
 "use client";
 
-import { createMessageSchema, type CreateMessageInput } from "@deskflow/shared";
+import { createMessageSchema, type CreateMessageInput, type Message } from "@deskflow/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
+import { confirmMessage, optimisticMessage, removeMessage, type ThreadMessage } from "@/lib/tickets/message-cache";
+import { ticketKeys } from "@/lib/tickets/query-keys";
 import { cn } from "@/lib/utils";
 
 const MODES = [
@@ -18,25 +20,44 @@ const MODES = [
 
 interface ReplyFormProps {
   ticketNumber: number;
+  /** Utilisateur connecté : auteur du message affiché avant la réponse de l'API */
+  author: Message["author"];
   /** Agents uniquement : un client ne peut pas écrire de note interne (refusé par l'API) */
   allowInternalNote?: boolean;
 }
 
-export function ReplyForm({ ticketNumber, allowInternalNote = false }: ReplyFormProps) {
-  const router = useRouter();
+export function ReplyForm({ ticketNumber, author, allowInternalNote = false }: ReplyFormProps) {
+  const queryClient = useQueryClient();
+  const messagesKey = ticketKeys.messages(ticketNumber);
   const form = useForm<CreateMessageInput>({
     resolver: zodResolver(createMessageSchema),
     defaultValues: { body: "", isInternalNote: false },
   });
   const isInternalNote = useWatch({ control: form.control, name: "isInternalNote" });
 
+  function updateMessages(update: (messages: ThreadMessage[]) => ThreadMessage[]) {
+    queryClient.setQueryData<ThreadMessage[]>(messagesKey, (messages = []) => update(messages));
+  }
+
+  /** Optimistic update : le message s'affiche aussitôt, puis est confirmé ou retiré selon l'API. */
   async function onSubmit(values: CreateMessageInput) {
+    const pending = optimisticMessage(values, author);
+    // Une relecture en cours écraserait le message ajouté
+    await queryClient.cancelQueries({ queryKey: messagesKey });
+    updateMessages((messages) => [...messages, pending]);
+    form.reset({ body: "", isInternalNote: values.isInternalNote });
+
     try {
-      await apiFetch(`/tickets/${ticketNumber}/messages`, { method: "POST", json: values });
-      form.reset({ body: "", isInternalNote: values.isInternalNote });
-      // Relit le Server Component : nouveau message, statut et première réponse à jour
-      router.refresh();
+      const saved = await apiFetch<Message>(`/tickets/${ticketNumber}/messages`, { method: "POST", json: values });
+      updateMessages((messages) => confirmMessage(messages, pending.id, saved));
+      if (!values.isInternalNote) {
+        // Statut et première réponse ont pu changer (aussi poussés par `ticket.updated` si le socket est connecté)
+        void queryClient.invalidateQueries({ queryKey: ticketKeys.detail(ticketNumber), exact: true });
+      }
     } catch (error) {
+      // Rien ne doit laisser croire que l'envoi a réussi : message retiré, texte rendu pour réessayer
+      updateMessages((messages) => removeMessage(messages, pending.id));
+      form.reset(values);
       form.setError("root", { message: errorMessage(error) });
     }
   }

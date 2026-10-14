@@ -5,6 +5,7 @@ import { serverFetch } from "@/lib/api/server";
 import type { Member, TicketPage } from "@/lib/api/types";
 import { hasActiveFilters, parseFilters, toSearchParams } from "@/lib/tickets/filters";
 import { TicketFiltersForm } from "./ticket-filters-form";
+import { TicketListUpdates } from "./ticket-list-updates";
 import { TicketTable } from "./ticket-table";
 
 export const metadata: Metadata = { title: "Tickets · Deskflow" };
@@ -34,6 +35,7 @@ export default async function TicketsPage({ params, searchParams }: PageProps<"/
       </div>
 
       <TicketFiltersForm filters={filters} agents={agents} />
+      <TicketListUpdates />
 
       {page.items.length > 0 ? (
         <TicketTable tickets={page.items} basePath={basePath} />
