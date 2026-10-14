@@ -27,6 +27,13 @@ export interface Message {
   author: { id: string; name: string; role: Role };
 }
 
+/** Un agent rédige une réponse (ou une note interne) sur un ticket. */
+export interface AgentTypingEvent {
+  ticketId: string;
+  agent: { id: string; name: string };
+  isInternalNote: boolean;
+}
+
 export interface MessageCreatedEvent {
   ticketId: string;
   ticketNumber: number;
@@ -41,6 +48,8 @@ export interface ServerToClientEvents {
   'ticket.updated': (ticket: Ticket) => void;
   /** Aux participants du ticket ; une note interne n'est envoyée qu'aux agents */
   'message.created': (event: MessageCreatedEvent) => void;
+  /** Aux autres participants du ticket ; pendant une note interne, aux agents seulement */
+  'agent.typing': (event: AgentTypingEvent) => void;
 }
 
 /** Réponse (acknowledgement) du serveur à `ticket.join` */
@@ -50,9 +59,15 @@ export const ticketRoomRequestSchema = z.strictObject({ ticketId: z.uuid() });
 
 export type TicketRoomRequest = z.infer<typeof ticketRoomRequestSchema>;
 
+export const agentTypingSchema = z.strictObject({ ticketId: z.uuid(), isInternalNote: z.boolean() });
+
+export type AgentTypingRequest = z.infer<typeof agentTypingSchema>;
+
 /** Événements envoyés par le navigateur. */
 export interface ClientToServerEvents {
   /** Suivre un ticket : accepté seulement s'il est visible de l'utilisateur (même règle que REST) */
   'ticket.join': (request: TicketRoomRequest, ack: (result: JoinTicketAck) => void) => void;
   'ticket.leave': (request: TicketRoomRequest) => void;
+  /** Agents uniquement, sur un ticket rejoint ; à limiter côté navigateur (~1 fois toutes les 2 s) */
+  'agent.typing': (request: AgentTypingRequest) => void;
 }

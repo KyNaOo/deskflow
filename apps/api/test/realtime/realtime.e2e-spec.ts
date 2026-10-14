@@ -193,6 +193,83 @@ describe('Temps réel — gateway Socket.io (e2e)', () => {
     });
   });
 
+  describe('agent.typing', () => {
+    function typing(socket: TestSocket, ticketId: string, isInternalNote = false) {
+      socket.emit('agent.typing', { ticketId, isInternalNote });
+    }
+
+    /** Ticket suivi par le client, l'agent et un second agent. */
+    async function followedTicket() {
+      const ticket = await openTicket(customer);
+      const sides = {
+        agent: await connect(agent),
+        otherAgent: await connect(otherAgent),
+        customer: await connect(customer),
+      };
+      for (const side of Object.values(sides)) {
+        await join(side.socket, ticket.id);
+      }
+      return { ticket, ...sides };
+    }
+
+    const typingEvents = (side: { events: ReturnType<typeof recordEvents> }) =>
+      side.events.received.filter((e) => e.event === 'agent.typing').map((e) => e.payload);
+
+    it('est relayé aux autres participants avec le nom de l’agent, pas à l’émetteur', async () => {
+      const { ticket, agent: agentSide, otherAgent: otherAgentSide, customer: customerSide } = await followedTicket();
+
+      typing(agentSide.socket, ticket.id);
+      // Témoin : une fois l'événement du collègue reçu, le sien serait déjà arrivé
+      typing(otherAgentSide.socket, ticket.id);
+
+      const expected = { ticketId: ticket.id, agent: { id: agent.id, name: 'AGENT de test' }, isInternalNote: false };
+      expect(await customerSide.events.waitFor('agent.typing')).toEqual(expected);
+      expect(await otherAgentSide.events.waitFor('agent.typing')).toEqual(expected);
+      await agentSide.events.waitFor('agent.typing', (e) => e.agent.id === otherAgent.id);
+      expect(typingEvents(agentSide).map((e) => e.agent.id)).not.toContain(agent.id);
+    });
+
+    it('pendant une note interne, n’est relayé qu’aux agents', async () => {
+      const { ticket, agent: agentSide, otherAgent: otherAgentSide, customer: customerSide } = await followedTicket();
+
+      typing(agentSide.socket, ticket.id, true);
+      typing(agentSide.socket, ticket.id, false);
+
+      await customerSide.events.waitFor('agent.typing');
+      expect(typingEvents(customerSide)).toEqual([expect.objectContaining({ isInternalNote: false })]);
+      await otherAgentSide.events.waitFor('agent.typing', (e) => !e.isInternalNote);
+      expect(typingEvents(otherAgentSide).map((e) => e.isInternalNote)).toEqual([true, false]);
+    });
+
+    it('est ignoré venant d’un client', async () => {
+      const { ticket, agent: agentSide, otherAgent: otherAgentSide, customer: customerSide } = await followedTicket();
+
+      typing(customerSide.socket, ticket.id);
+      // Acquitté après le traitement de agent.typing (même socket) : le refus est acquis
+      await join(customerSide.socket, ticket.id);
+      typing(agentSide.socket, ticket.id);
+
+      await otherAgentSide.events.waitFor('agent.typing');
+      expect(typingEvents(otherAgentSide).map((e) => e.agent.id)).toEqual([agent.id]);
+    });
+
+    it('est ignoré venant d’un agent qui n’a pas rejoint le ticket', async () => {
+      const ticket = await openTicket(customer);
+      const customerSide = await connect(customer);
+      await join(customerSide.socket, ticket.id);
+      const { socket: outsider } = await connect(otherAgent);
+
+      typing(outsider, ticket.id);
+      await join(outsider, ticket.id);
+      typing(outsider, ticket.id);
+
+      await customerSide.events.waitFor('agent.typing');
+      // Seul le second, émis après ticket.join, est passé
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(typingEvents(customerSide)).toHaveLength(1);
+    });
+  });
+
   describe('ticket.updated', () => {
     it('un changement par un agent est reçu par les agents du tenant et le client du ticket', async () => {
       const ticket = await openTicket(customer);

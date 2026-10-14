@@ -2,6 +2,7 @@ import type { Message, Ticket } from "@deskflow/shared";
 import type { ThreadMessage } from "@/lib/tickets/message-cache";
 import { MessageThread } from "./message-thread";
 import { ReplyForm } from "./reply-form";
+import { TypingIndicator } from "./typing-indicator";
 
 interface ConversationProps {
   ticket: Ticket;
@@ -22,7 +23,15 @@ export function Conversation({ ticket, messages, author, allowInternalNote, clos
           {closedNotice}
         </p>
       ) : (
-        <ReplyForm ticketNumber={ticket.number} author={author} allowInternalNote={allowInternalNote} />
+        <div className="flex flex-col gap-2">
+          <TypingIndicator ticketId={ticket.id} currentUserId={author.id} />
+          <ReplyForm
+            ticketId={ticket.id}
+            ticketNumber={ticket.number}
+            author={author}
+            allowInternalNote={allowInternalNote}
+          />
+        </div>
       )}
     </>
   );

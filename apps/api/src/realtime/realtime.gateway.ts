@@ -9,6 +9,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import {
+  agentTypingSchema,
   type ClientToServerEvents,
   type JoinTicketAck,
   ticketRoomRequestSchema,
@@ -27,6 +28,8 @@ import { rooms } from './realtime-rooms.js';
 
 interface SocketData {
   user: AuthenticatedUser;
+  /** Nom affiché (« Alice est en train d'écrire… ») : absent du JWT, lu une fois au handshake */
+  name: string;
 }
 
 // Les événements serveur ne sont pas typés ici : l'api émet les objets Prisma (dates en Date),
@@ -55,13 +58,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
     // Au handshake : le navigateur envoie le cookie httpOnly de l'access token (withCredentials).
     // Sans jeton valide, la connexion est refusée avant d'exister (`connect_error` côté client).
     server.use((socket, next) => {
-      const cookies = parseCookie(socket.handshake.headers.cookie ?? '');
-      this.tokens.verifyAccessToken(cookies[ACCESS_TOKEN_COOKIE]).then((user) => {
-        if (!user) {
+      this.authenticate(socket.handshake.headers.cookie).then((identity) => {
+        if (!identity) {
           next(new Error('Non authentifié'));
           return;
         }
-        socket.data.user = user;
+        socket.data.user = identity.user;
+        socket.data.name = identity.name;
         next();
       }, next);
     });
@@ -108,22 +111,63 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
   }
 
   /**
-   * Hors requête HTTP, aucun contexte tenant n'est ouvert : on en ouvre un avec le tenant du
-   * JWT, pour lire le ticket à travers le même client Prisma filtré que le reste de l'API.
+   * « Alice est en train d'écrire… » : relayé aux autres participants du ticket (pas à l'émetteur).
+   * Seul un agent qui a rejoint le ticket peut l'émettre ; pendant la saisie d'une note interne,
+   * seuls les agents le reçoivent : le client ne doit pas deviner qu'on écrit sur lui.
    */
-  private canAccessTicket(user: AuthenticatedUser, ticketId: string): Promise<boolean> {
-    return this.cls.run(async () => {
-      this.cls.set('tenantId', user.tenantId);
-      try {
-        const ticket = await this.prisma.ticket.findFirst({
+  @SubscribeMessage('agent.typing')
+  relayTyping(@ConnectedSocket() socket: RealtimeSocket, @MessageBody() body: unknown) {
+    const request = agentTypingSchema.safeParse(body);
+    const { user, name } = socket.data;
+    if (!request.success || !isAgent(user)) {
+      return;
+    }
+
+    const { ticketId, isInternalNote } = request.data;
+    // Appartenir à la room prouve que ticket.join a vérifié l'accès à ce ticket
+    if (!socket.rooms.has(rooms.ticket(ticketId))) {
+      return;
+    }
+    const room = isInternalNote ? rooms.ticketAgents(ticketId) : rooms.ticket(ticketId);
+    socket.to(room).emit('agent.typing', { ticketId, agent: { id: user.id, name }, isInternalNote });
+  }
+
+  /** Utilisateur du cookie d'access token, avec son nom ; `null` si le jeton ou le compte est invalide. */
+  private async authenticate(cookieHeader = '') {
+    const user = await this.tokens.verifyAccessToken(parseCookie(cookieHeader)[ACCESS_TOKEN_COOKIE]);
+    if (!user) {
+      return null;
+    }
+    const account = await this.withTenant(user, () =>
+      this.prisma.user.findFirst({ where: { id: user.id }, select: { name: true } }),
+    );
+    return account ? { user, name: account.name } : null;
+  }
+
+  private async canAccessTicket(user: AuthenticatedUser, ticketId: string): Promise<boolean> {
+    try {
+      const ticket = await this.withTenant(user, () =>
+        this.prisma.ticket.findFirst({
           where: { id: ticketId, ...ticketAccessFilter(user) },
           select: { id: true },
-        });
-        return ticket !== null;
-      } catch (error) {
-        this.logger.error(error);
-        return false;
-      }
+        }),
+      );
+      return ticket !== null;
+    } catch (error) {
+      this.logger.error(error);
+      return false;
+    }
+  }
+
+  /**
+   * Hors requête HTTP, aucun contexte tenant n'est ouvert : on en ouvre un avec le tenant du
+   * JWT, pour lire la base à travers le même client Prisma filtré que le reste de l'API.
+   */
+  private withTenant<T>(user: AuthenticatedUser, read: () => Promise<T>): Promise<T> {
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', user.tenantId);
+      // Attendu ici : une requête Prisma ne part qu'au premier await, qui doit être dans le contexte
+      return await read();
     });
   }
 }

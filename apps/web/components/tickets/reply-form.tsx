@@ -9,6 +9,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
+import { useTypingSignal } from "@/lib/realtime/use-typing";
 import { confirmMessage, optimisticMessage, removeMessage, type ThreadMessage } from "@/lib/tickets/message-cache";
 import { ticketKeys } from "@/lib/tickets/query-keys";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ const MODES = [
 ] as const;
 
 interface ReplyFormProps {
+  ticketId: string;
   ticketNumber: number;
   /** Utilisateur connecté : auteur du message affiché avant la réponse de l'API */
   author: Message["author"];
@@ -26,8 +28,11 @@ interface ReplyFormProps {
   allowInternalNote?: boolean;
 }
 
-export function ReplyForm({ ticketNumber, author, allowInternalNote = false }: ReplyFormProps) {
+export function ReplyForm({ ticketId, ticketNumber, author, allowInternalNote = false }: ReplyFormProps) {
   const queryClient = useQueryClient();
+  const signalTyping = useTypingSignal(ticketId);
+  // « En train d'écrire… » : signalé pour les agents seulement (refusé par l'API pour un client)
+  const isAgent = author.role !== "CUSTOMER";
   const messagesKey = ticketKeys.messages(ticketNumber);
   const form = useForm<CreateMessageInput>({
     resolver: zodResolver(createMessageSchema),
@@ -104,6 +109,10 @@ export function ReplyForm({ ticketNumber, author, allowInternalNote = false }: R
             </FieldLabel>
             <Textarea
               {...field}
+              onChange={(event) => {
+                field.onChange(event);
+                if (isAgent) signalTyping(isInternalNote ?? false);
+              }}
               id="reply-body"
               rows={4}
               placeholder={isInternalNote ? "Visible uniquement par l’équipe" : allowInternalNote ? "Votre réponse au client" : "Votre message"}
