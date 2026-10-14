@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Attachment } from './attachments.js';
 import type { Role } from './roles.js';
 import type { TicketPriority, TicketStatus } from './tickets.js';
 
@@ -25,6 +26,7 @@ export interface Message {
   aiGenerated: boolean;
   createdAt: string;
   author: { id: string; name: string; role: Role };
+  attachments: Attachment[];
 }
 
 /** Un agent rédige une réponse (ou une note interne) sur un ticket. */

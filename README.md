@@ -60,6 +60,7 @@ Le seed crée aussi 50 tickets de démonstration (statuts, priorités et assigna
 | `redis` | `localhost:6379` | Pub/sub du temps réel entre instances, files BullMQ |
 | `s3` | http://localhost:8333 | API S3 (SeaweedFS) — un `AccessDenied` dans le navigateur est **normal** : l'API exige des requêtes signées |
 | `s3` (admin) | http://localhost:23646 | Interface web de SeaweedFS (buckets, fichiers) |
+| `s3-setup` | — | Prépare le bucket des pièces jointes (création, CORS) puis s'arrête : `Exited (0)` est normal |
 | `mailpit` | http://localhost:8026 | Boîte mail de dev : capture tous les e-mails envoyés |
 | `shared` | — | Recompile `packages/shared` à chaque modification (l'api et le front se rechargent) |
 
@@ -134,6 +135,7 @@ deskflow/
 │   ├── api/              # NestJS (Vitest, oxlint)
 │   │   ├── prisma/       # schema.prisma, migrations SQL, seed
 │   │   └── src/
+│   │       ├── attachments/ # pièces jointes : signature de l'envoi, rattachement aux messages, téléchargement contrôlé
 │   │       ├── auth/     # inscription, connexion, JWT + refresh tokens, guards, acceptation d'invitation
 │   │       ├── mail/     # envoi d'e-mails (Nodemailer → Mailpit en dev)
 │   │       ├── messages/ # conversation d'un ticket, notes internes, statut automatique
@@ -141,6 +143,7 @@ deskflow/
 │   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
 │   │       ├── realtime/ # gateway Socket.io : authentification au handshake, rooms, événements, adapter Redis
 │   │       ├── redis/    # client Redis partagé (healthcheck)
+│   │       ├── storage/  # client S3 : formulaires d'envoi et URL de lecture présignés
 │   │       ├── tickets/  # tickets : création (numérotation par tenant), liste (filtres, recherche, curseur), statut / priorité / assignation
 │   │       └── users/    # liste des membres (isolation tenant), invitations
 │   └── web/              # Next.js App Router + Tailwind + shadcn/ui (Vitest, ESLint)
@@ -197,6 +200,14 @@ deskflow/
 - **Temps réel sur plusieurs instances** : voir la section dédiée ci-dessous.
 - **Rate limiting** (`@nestjs/throttler`) sur la connexion et l'inscription uniquement : 5 tentatives par minute et par IP, puis **429**. Le compteur est vérifié avant la validation du body et avant toute lecture en base.
 - **SeaweedFS** en local pour le stockage objet : API S3, donc le même code fonctionne avec S3 / R2 en production (MinIO ne publie plus d'images Docker).
+- **Pièces jointes par URL présignée** : les fichiers ne transitent **jamais** par l'API, qui ne fait que signer. Le parcours est le suivant :
+  1. le navigateur déclare le fichier (`POST /tickets/:number/attachments` avec nom, type et taille) ;
+  2. l'API vérifie l'accès au ticket et valide type et taille avec le schéma partagé : images, PDF, texte, 10 Mo au plus, et ni SVG ni HTML, qui peuvent exécuter du script ;
+  3. elle signe un **formulaire d'envoi (POST présigné)**, valable 5 minutes, et le navigateur l'envoie directement au stockage, avec une barre de progression.
+
+  La taille exacte et le type font partie de la **signature** (`content-length-range`, champ `Content-Type`) : un client qui mentirait après coup est refusé par le stockage lui-même, ce que les tests e2e vérifient sur le vrai SeaweedFS. La clé de l'objet (`tenants/<tenant>/tickets/<ticket>/<uuid>`) ne contient jamais le nom choisi par l'utilisateur. À l'envoi du message, l'API rattache les pièces jointes de l'auteur encore libres sur ce ticket, après avoir vérifié qu'elles sont réellement dans le stockage.
+
+  Pour le téléchargement, un lien stable de l'API contrôle l'accès, avec les mêmes règles que les messages (404 pour un autre tenant ou un autre client, et pour un client sur la pièce jointe d'une note interne), puis **redirige** vers une URL de lecture valable 5 minutes. Images et PDF s'ouvrent dans le navigateur, le reste est téléchargé. Les clés S3 restent côté API. L'adresse signée est `S3_PUBLIC_URL`, celle que voit le navigateur (`localhost:8333`), différente de celle que l'API utilise sur le réseau Docker (`s3:8333`). Un service `s3-setup` prépare le bucket au lancement, avec un CORS limité au front.
 
 ## Temps réel sur plusieurs instances
 
@@ -225,6 +236,7 @@ Un client connecté à l'instance 2 reçoit alors les événements des requêtes
 - **`port is already allocated`** : un autre projet utilise ce port → modifier la variable correspondante dans `.env` (ex. `MAILPIT_UI_PORT=8027`), puis `docker compose up -d`. Pour trouver le coupable : `docker ps --format '{{.Names}}\t{{.Ports}}' | grep 8026`.
 - **`api` reste en `unhealthy`** : `curl localhost:3001/health` indique quelle dépendance est `down` (en général la base : `docker compose ps postgres`).
 - **`web` inaccessible alors que l'api répond** : un service n'a pas pu démarrer et Compose a interrompu le lancement → `docker compose ps -a` pour voir lequel est resté en `Created`.
+- **`api` ne démarre pas et `s3-setup` est en erreur** : l'api attend que le bucket soit prêt → `docker compose logs s3-setup` (en général une variable `S3_*` manquante dans `.env`).
 - **`Configuration invalide` au démarrage de l'api** : une variable a été ajoutée au projet → comparer son `.env` avec `.env.example`, puis `docker compose up -d` (recrée les conteneurs avec la nouvelle config).
 - **Dépendances incohérentes après un `git pull`** : `bin/pnpm install`, puis `bin/pnpm db:deploy` si de nouvelles migrations sont arrivées.
 - **`Cannot find module '@deskflow/shared'`** : le package partagé n'est pas compilé (son `dist/` n'est pas versionné, il est construit par `pnpm install`) → `bin/pnpm --filter @deskflow/shared build`.
@@ -235,6 +247,8 @@ Un client connecté à l'instance 2 reçoit alors les événements des requêtes
 
 - **Cookies en production** : en dev, le front et l'API partagent `localhost`, donc les cookies posés par l'API sont visibles du serveur Next.js. En production, il faudra servir les deux sur le même site (ex. `app.exemple.com` et `api.exemple.com`, avec l'attribut `Domain` sur les cookies) ou faire passer l'API par le serveur Next.js.
 - **Recherche** : seuls les sujets sont indexés. Chercher aussi dans les messages demanderait un `tsvector` sur les messages (ou un moteur dédié si les volumes explosent). Pour un tenant avec énormément de résultats, la recherche passerait entièrement en SQL (filtres et pagination compris) plutôt que de transmettre la liste des identifiants trouvés.
+- **Pièces jointes orphelines** : un fichier envoyé mais jamais rattaché à un message (formulaire abandonné) reste dans le stockage. Un job planifié (Jalon 4) pourrait supprimer ceux de plus de 24 h, ainsi que les objets des tickets supprimés.
+- **CORS du stockage** : SeaweedFS applique la règle du bucket aux objets (lecture), mais répond à toutes les origines au niveau du bucket lui-même, là où arrivent les envois. Ce n'est pas une faille, car chaque envoi exige un formulaire signé par l'API ; S3 ou R2 en production appliquent la règle partout.
 - **Rate limiting multi-instances** : les compteurs sont en mémoire, donc propres à chaque instance de l'API : avec deux instances, un attaquant dispose de deux fois plus d'essais. Il faudrait les partager dans Redis (stockage Redis pour `@nestjs/throttler`).
 
 ## Feuille de route
@@ -246,7 +260,7 @@ Un client connecté à l'instance 2 reçoit alors les événements des requêtes
 - [x] Jalon 0 — CI GitHub Actions : lint → typecheck → tests → build → tests e2e sur un vrai Postgres
 - [x] Jalon 1 — Authentification et multi-tenant : inscription, JWT + refresh tokens (rotation, détection de vol), guards, isolation tenant, invitations, rate limiting, pages front
 - [x] Jalon 2 — Tickets et messages : numérotation par tenant, machine à états, liste (filtres, recherche plein texte, curseur), messages et notes internes, erreurs et logs, espace agents et portail client
-- [ ] Jalon 3 — Temps réel et pièces jointes
+- [x] Jalon 3 — Temps réel et pièces jointes : gateway Socket.io authentifiée, adapter Redis (plusieurs instances), cache TanStack Query et optimistic update, indicateur de saisie, pièces jointes par URL présignée
 - [ ] Jalon 4 — Traitements asynchrones
 - [ ] Jalon 5 — Assistant IA (RAG)
 - [ ] Jalon 6 — Analytics, finition, déploiement

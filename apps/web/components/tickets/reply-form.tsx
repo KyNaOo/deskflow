@@ -1,18 +1,22 @@
 "use client";
 
-import { createMessageSchema, type CreateMessageInput, type Message } from "@deskflow/shared";
+import { ATTACHMENT_MIME_TYPES, createMessageSchema, type CreateMessageInput, type Message } from "@deskflow/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
+import { PaperclipIcon } from "lucide-react";
+import { useRef } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
+import { useAttachmentUploads } from "@/lib/attachments/use-attachment-uploads";
 import { useTypingSignal } from "@/lib/realtime/use-typing";
 import { confirmMessage, optimisticMessage, removeMessage, type ThreadMessage } from "@/lib/tickets/message-cache";
 import { ticketKeys } from "@/lib/tickets/query-keys";
 import { cn } from "@/lib/utils";
+import { AttachmentUploads } from "./attachment-uploads";
 
 const MODES = [
   { value: false, label: "Réponse au client" },
@@ -33,6 +37,8 @@ export function ReplyForm({ ticketId, ticketNumber, author, allowInternalNote = 
   const signalTyping = useTypingSignal(ticketId);
   // « En train d'écrire… » : signalé pour les agents seulement (refusé par l'API pour un client)
   const isAgent = author.role !== "CUSTOMER";
+  const uploads = useAttachmentUploads(ticketNumber);
+  const fileInput = useRef<HTMLInputElement>(null);
   const messagesKey = ticketKeys.messages(ticketNumber);
   const form = useForm<CreateMessageInput>({
     resolver: zodResolver(createMessageSchema),
@@ -46,14 +52,17 @@ export function ReplyForm({ ticketId, ticketNumber, author, allowInternalNote = 
 
   /** Optimistic update : le message s'affiche aussitôt, puis est confirmé ou retiré selon l'API. */
   async function onSubmit(values: CreateMessageInput) {
-    const pending = optimisticMessage(values, author);
+    const { attachments } = uploads;
+    const payload = { ...values, ...(attachments.length > 0 && { attachmentIds: attachments.map(({ id }) => id) }) };
+    const pending = optimisticMessage(values, author, attachments);
     // Une relecture en cours écraserait le message ajouté
     await queryClient.cancelQueries({ queryKey: messagesKey });
     updateMessages((messages) => [...messages, pending]);
     form.reset({ body: "", isInternalNote: values.isInternalNote });
 
     try {
-      const saved = await apiFetch<Message>(`/tickets/${ticketNumber}/messages`, { method: "POST", json: values });
+      const saved = await apiFetch<Message>(`/tickets/${ticketNumber}/messages`, { method: "POST", json: payload });
+      uploads.reset();
       updateMessages((messages) => confirmMessage(messages, pending.id, saved));
       if (!values.isInternalNote) {
         // Statut et première réponse ont pu changer (aussi poussés par `ticket.updated` si le socket est connecté)
@@ -61,6 +70,7 @@ export function ReplyForm({ ticketId, ticketNumber, author, allowInternalNote = 
       }
     } catch (error) {
       // Rien ne doit laisser croire que l'envoi a réussi : message retiré, texte rendu pour réessayer
+      // (les fichiers joints restent prêts)
       updateMessages((messages) => removeMessage(messages, pending.id));
       form.reset(values);
       form.setError("root", { message: errorMessage(error) });
@@ -125,10 +135,32 @@ export function ReplyForm({ ticketId, ticketNumber, author, allowInternalNote = 
         )}
       />
 
+      <AttachmentUploads uploads={uploads.uploads} onRemove={uploads.remove} />
       <FieldError errors={[form.formState.errors.root]} />
-      <Button type="submit" className="self-end" disabled={form.formState.isSubmitting}>
-        {isInternalNote ? "Ajouter la note" : allowInternalNote ? "Envoyer la réponse" : "Envoyer"}
-      </Button>
+      <div className="flex items-center justify-between gap-2">
+        {/* Le champ fichier natif est masqué : le bouton est plus lisible et reste accessible au clavier */}
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          accept={ATTACHMENT_MIME_TYPES.join(",")}
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+          onChange={(event) => {
+            uploads.addFiles([...(event.target.files ?? [])]);
+            // Permet de choisir à nouveau le même fichier après l'avoir retiré
+            event.target.value = "";
+          }}
+        />
+        <Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>
+          <PaperclipIcon aria-hidden />
+          Joindre un fichier
+        </Button>
+        <Button type="submit" disabled={form.formState.isSubmitting || uploads.isUploading}>
+          {isInternalNote ? "Ajouter la note" : allowInternalNote ? "Envoyer la réponse" : "Envoyer"}
+        </Button>
+      </div>
     </form>
   );
 }

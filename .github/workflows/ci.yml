@@ -37,6 +37,11 @@ jobs:
     env:
       DATABASE_URL: postgresql://deskflow:deskflow@localhost:5432/deskflow
       REDIS_URL: redis://localhost:6379
+      S3_ENDPOINT: http://localhost:8333
+      S3_PUBLIC_URL: http://localhost:8333
+      S3_BUCKET: attachments
+      S3_ACCESS_KEY: ci-access-key
+      S3_SECRET_KEY: ci-secret-key
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
       # Aucun e-mail réellement envoyé : le Mailer est mocké dans les tests
       SMTP_URL: smtp://localhost:1025
@@ -67,6 +72,14 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # Lancé à la main : un service GitHub Actions ne peut pas recevoir d'arguments (`mini`)
+      - name: Start S3 storage (SeaweedFS)
+        run: |
+          docker run -d --name s3 -p 8333:8333 \
+            -e AWS_ACCESS_KEY_ID=$S3_ACCESS_KEY -e AWS_SECRET_ACCESS_KEY=$S3_SECRET_KEY \
+            chrislusf/seaweedfs:latest mini -dir=/data -bucket=$S3_BUCKET
+          timeout 60 sh -c 'until curl -sf http://localhost:8333/healthz; do sleep 2; done'
 
       - name: Apply migrations
         run: pnpm db:deploy

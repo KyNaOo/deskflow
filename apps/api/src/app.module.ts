@@ -4,6 +4,7 @@ import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { ClsModule } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
+import { AttachmentsModule } from './attachments/attachments.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { loggerConfig } from './common/logger.config.js';
@@ -42,6 +43,7 @@ import { UsersModule } from './users/users.module.js';
     TenantsModule,
     TicketsModule,
     MessagesModule,
+    AttachmentsModule,
   ],
   providers: [
     // Déclaré ici plutôt que dans main.ts pour s'appliquer aussi aux tests e2e

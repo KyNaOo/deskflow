@@ -41,6 +41,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      s3-setup: { condition: service_completed_successfully }
     healthcheck:
       # Pas de curl dans l'image slim : on utilise le fetch natif de Node
       test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
@@ -101,6 +102,18 @@ services:
       - "${S3_ADMIN_PORT:-23646}:23646" # Admin UI
     volumes:
       - s3-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8333/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Prépare le bucket (création, CORS limité au front) puis s'arrête ; idempotent
+  s3-setup:
+    <<: *node-dev
+    command: ["pnpm", "storage:setup"]
+    depends_on:
+      s3: { condition: service_healthy }
 
   # Capture tous les e-mails envoyés en dev : UI sur http://localhost:8026
   # (8026 et non 8025, le port par défaut de Mailpit, souvent déjà pris par un autre projet)

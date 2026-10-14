@@ -1,12 +1,13 @@
 import { RelativeTime } from "@/components/relative-time";
 import type { ThreadMessage } from "@/lib/tickets/message-cache";
+import { AttachmentList } from "./attachment-list";
 import { cn } from "@/lib/utils";
 
 /**
  * Conversation : les notes internes (agents seulement) sont nettement distinguées des réponses.
  * Un message en cours d'envoi (optimistic update) est affiché atténué.
  */
-export function MessageThread({ messages }: { messages: ThreadMessage[] }) {
+export function MessageThread({ ticketNumber, messages }: { ticketNumber: number; messages: ThreadMessage[] }) {
   return (
     <ol className="flex flex-col gap-4">
       {messages.map((message) => {
@@ -33,6 +34,7 @@ export function MessageThread({ messages }: { messages: ThreadMessage[] }) {
               </span>
             </div>
             <p className="text-sm whitespace-pre-wrap">{message.body}</p>
+            <AttachmentList ticketNumber={ticketNumber} attachments={message.attachments} pending={message.pending} />
           </li>
         );
       })}

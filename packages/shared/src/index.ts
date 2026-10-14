@@ -4,6 +4,7 @@ import { z } from 'zod';
 // Effet de bord voulu : tout code qui importe ce package valide avec les mêmes messages.
 z.config(z.locales.fr());
 
+export * from './attachments.js';
 export * from './auth.js';
 export * from './fields.js';
 export * from './roles.js';

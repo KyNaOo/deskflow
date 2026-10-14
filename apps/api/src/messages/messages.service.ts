@@ -1,4 +1,5 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { attachmentSelect, AttachmentsService } from '../attachments/attachments.service.js';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { type Prisma, Role, TicketStatus } from '../generated/prisma/client.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
@@ -15,6 +16,7 @@ const messageSelect = {
   aiGenerated: true,
   createdAt: true,
   author: { select: { id: true, name: true, role: true } },
+  attachments: { select: attachmentSelect, orderBy: { createdAt: 'asc' } },
 } satisfies Prisma.MessageSelect;
 
 /**
@@ -26,6 +28,7 @@ export class MessagesService {
   constructor(
     @Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma,
     private readonly realtime: RealtimeService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   /** Conversation dans l'ordre chronologique. Un client ne reçoit jamais les notes internes. */
@@ -51,6 +54,7 @@ export class MessagesService {
     }
 
     const ticket = await this.findTicket(author, ticketNumber);
+    const attachments = await this.attachments.findUploaded(ticket.id, author.id, dto.attachmentIds ?? []);
     const now = new Date();
 
     const message = await this.prisma.$transaction(async (tx) => {
@@ -68,6 +72,17 @@ export class MessagesService {
         data: { ticketId: ticket.id, authorId: author.id, body: dto.body, isInternalNote },
         select: messageSelect,
       });
+
+      if (attachments.length > 0) {
+        // Conditionnel : une pièce jointe rattachée entre-temps à un autre message n'est pas volée
+        const { count: attached } = await tx.attachment.updateMany({
+          where: { id: { in: attachments.map(({ id }) => id) }, messageId: null },
+          data: { messageId: message.id },
+        });
+        if (attached !== attachments.length) {
+          throw new ConflictException('Une pièce jointe vient d’être utilisée par un autre message');
+        }
+      }
 
       if (!isCustomer && !isInternalNote) {
         // Délai de première réponse (indicateur du Jalon 6) : posé une seule fois
@@ -87,7 +102,7 @@ export class MessagesService {
         });
       }
 
-      return message;
+      return { ...message, attachments };
     });
 
     this.realtime.messageCreated(ticket, message);

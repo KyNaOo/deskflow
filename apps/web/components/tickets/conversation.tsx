@@ -17,7 +17,7 @@ interface ConversationProps {
 export function Conversation({ ticket, messages, author, allowInternalNote, closedNotice }: ConversationProps) {
   return (
     <>
-      <MessageThread messages={messages} />
+      <MessageThread ticketNumber={ticket.number} messages={messages} />
       {ticket.status === "CLOSED" ? (
         <p className="rounded-lg border border-dashed bg-background p-4 text-sm text-muted-foreground">
           {closedNotice}

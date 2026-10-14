@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_ATTACHMENTS_PER_MESSAGE } from './attachments.js';
 import { requiredText } from './fields.js';
 
 // Mêmes valeurs que les enums Prisma de l'api (prisma/schema.prisma)
@@ -66,6 +67,11 @@ export const createMessageSchema = z.strictObject({
   body: messageBody,
   /** Note interne : visible des agents uniquement */
   isInternalNote: z.boolean().optional(),
+  /** Pièces jointes déjà envoyées au stockage par l'auteur, à rattacher au message */
+  attachmentIds: z
+    .array(z.uuid('Identifiant de pièce jointe invalide'))
+    .max(MAX_ATTACHMENTS_PER_MESSAGE, `${MAX_ATTACHMENTS_PER_MESSAGE} pièces jointes maximum`)
+    .optional(),
 });
 
 export type CreateMessageInput = z.infer<typeof createMessageSchema>;

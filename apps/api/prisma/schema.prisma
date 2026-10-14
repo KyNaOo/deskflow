@@ -71,6 +71,7 @@ model User {
   ticketsOpened   Ticket[]       @relation("TicketCustomer")
   ticketsAssigned Ticket[]       @relation("TicketAssignee")
   messages        Message[]
+  attachments     Attachment[]
 
   // Un même e-mail peut exister dans deux organisations différentes
   @@unique([tenantId, email])
@@ -137,7 +138,8 @@ model Ticket {
   // de supprimer un utilisateur : à ajouter un jour, il faudrait plutôt l'anonymiser.
   customer User      @relation("TicketCustomer", fields: [customerId], references: [id], onDelete: Cascade)
   assignee User?     @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  messages Message[]
+  messages    Message[]
+  attachments Attachment[]
 
   @@unique([tenantId, number])
   // Liste des tickets : ordre de la pagination par curseur, avec ou sans filtre de statut
@@ -162,6 +164,33 @@ model Message {
   // Cascade : voir Ticket.customer
   author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
+  attachments Attachment[]
+
   @@index([ticketId, createdAt])
   @@map("messages")
+}
+
+/// Fichier envoyé directement au stockage S3 par le navigateur (URL présignée).
+/// Créée à la signature, sans message ; rattachée au message à son envoi.
+/// Pas de tenantId : on y accède toujours à travers son ticket, déjà filtré par tenant.
+model Attachment {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  ticketId   String   @map("ticket_id") @db.Uuid
+  messageId  String?  @map("message_id") @db.Uuid
+  uploaderId String   @map("uploader_id") @db.Uuid
+  /// Clé de l'objet dans le bucket : tenants/<tenantId>/tickets/<ticketId>/<uuid>
+  fileKey    String   @unique @map("file_key")
+  fileName   String   @map("file_name")
+  mimeType   String   @map("mime_type")
+  size       Int
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  ticket   Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  message  Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  // Cascade : voir Ticket.customer
+  uploader User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([messageId])
+  @@map("attachments")
 }

@@ -13,6 +13,15 @@ export const envSchema = z.object({
   JWT_SECRET: z.string().min(32),
   // Pub/sub du temps réel entre instances de l'API
   REDIS_URL: z.url(),
+  // Stockage S3 des pièces jointes (SeaweedFS en local, S3 / R2 en production)
+  S3_ENDPOINT: z.url(),
+  // Adresse du stockage vue par le navigateur, signée dans les URL présignées
+  // (en local : localhost, alors que l'API le joint par le réseau Docker)
+  S3_PUBLIC_URL: z.url(),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_BUCKET: z.string().min(1),
+  S3_ACCESS_KEY: z.string().min(1),
+  S3_SECRET_KEY: z.string().min(1),
   // Serveur d'envoi des e-mails : Mailpit en développement
   SMTP_URL: z.url(),
   // Adresse du front, pour les liens envoyés par e-mail

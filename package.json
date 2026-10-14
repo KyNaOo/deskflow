@@ -15,7 +15,8 @@
     "db:migrate": "pnpm --filter api db:migrate",
     "db:deploy": "pnpm --filter api db:deploy",
     "db:seed": "pnpm --filter api db:seed",
-    "db:reset": "pnpm --filter api db:reset"
+    "db:reset": "pnpm --filter api db:reset",
+    "storage:setup": "pnpm --filter api storage:setup"
   },
   "devDependencies": {
     "turbo": "^2.11.5"

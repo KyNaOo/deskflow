@@ -1,4 +1,4 @@
-import type { Message } from "@deskflow/shared";
+import type { Attachment, Message } from "@deskflow/shared";
 
 /** Message affiché dans la conversation : `pending` tant que l'API n'a pas confirmé l'envoi. */
 export type ThreadMessage = Message & { pending?: boolean };
@@ -9,6 +9,7 @@ let optimisticCount = 0;
 export function optimisticMessage(
   input: { body: string; isInternalNote?: boolean },
   author: Message["author"],
+  attachments: Attachment[] = [],
 ): ThreadMessage {
   optimisticCount += 1;
   return {
@@ -18,6 +19,7 @@ export function optimisticMessage(
     aiGenerated: false,
     createdAt: new Date().toISOString(),
     author,
+    attachments,
     pending: true,
   };
 }
