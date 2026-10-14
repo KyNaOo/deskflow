@@ -19,7 +19,11 @@ async function bootstrap() {
     exposedHeaders: ['X-Request-Id'],
   });
 
-  app.useWebSocketAdapter(new RealtimeIoAdapter(app));
+  const realtimeAdapter = new RealtimeIoAdapter(app);
+  await realtimeAdapter.connectToRedis();
+  app.useWebSocketAdapter(realtimeAdapter);
+  // SIGTERM (docker stop) : Nest ferme proprement les connexions (base, Redis, sockets)
+  app.enableShutdownHooks();
 
   await app.listen(config.get('PORT', { infer: true }));
 }

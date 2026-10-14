@@ -9,7 +9,7 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
-    # Base réelle pour les tests e2e de l'api (même image qu'en local)
+    # Base et Redis réels pour les tests e2e de l'api (mêmes images qu'en local)
     services:
       postgres:
         image: pgvector/pgvector:pg18
@@ -24,9 +24,19 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     env:
       DATABASE_URL: postgresql://deskflow:deskflow@localhost:5432/deskflow
+      REDIS_URL: redis://localhost:6379
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
       # Aucun e-mail réellement envoyé : le Mailer est mocké dans les tests
       SMTP_URL: smtp://localhost:1025

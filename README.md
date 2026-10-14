@@ -55,15 +55,15 @@ Le seed crée aussi 50 tickets de démonstration (statuts, priorités et assigna
 | Service | URL | Rôle |
 |---|---|---|
 | `web` | http://localhost:3000 | Front Next.js |
-| `api` | http://localhost:3001 | API NestJS — état de santé : http://localhost:3001/health |
+| `api` | http://localhost:3001 | API NestJS — état de santé (base + Redis) : http://localhost:3001/health |
 | `postgres` | `localhost:5432` | PostgreSQL 18 + pgvector (user / mdp / base : `deskflow`) |
-| `redis` | `localhost:6379` | Cache, pub/sub, files BullMQ |
+| `redis` | `localhost:6379` | Pub/sub du temps réel entre instances, files BullMQ |
 | `s3` | http://localhost:8333 | API S3 (SeaweedFS) — un `AccessDenied` dans le navigateur est **normal** : l'API exige des requêtes signées |
 | `s3` (admin) | http://localhost:23646 | Interface web de SeaweedFS (buckets, fichiers) |
 | `mailpit` | http://localhost:8026 | Boîte mail de dev : capture tous les e-mails envoyés |
 | `shared` | — | Recompile `packages/shared` à chaque modification (l'api et le front se rechargent) |
 
-Un port est déjà pris sur votre machine ? Changez-le dans `.env` (`WEB_PORT`, `API_PORT`, `POSTGRES_PORT`, `MAILPIT_UI_PORT`…).
+Un port est déjà pris sur votre machine ? Changez-le dans `.env` (`WEB_PORT`, `API_PORTS`, `POSTGRES_PORT`, `MAILPIT_UI_PORT`…).
 
 ## Configuration
 
@@ -121,6 +121,7 @@ docker compose restart api
 docker compose down                  # arrêter
 docker compose down -v               # arrêter ET supprimer les données (BDD, Redis, S3)
 docker compose build tools           # reconstruire l'image de dev (après modif du Dockerfile)
+docker compose up -d --scale api=2   # deux instances de l'api (ports 3001 et 3002)
 ```
 
 > Astuce : les `node_modules` sont écrits dans le dossier du projet avec votre UID, donc VS Code (autocomplétion, typecheck) fonctionne normalement.
@@ -138,7 +139,8 @@ deskflow/
 │   │       ├── messages/ # conversation d'un ticket, notes internes, statut automatique
 │   │       ├── common/   # filtre d'erreurs, logs, validation zod, contexte tenant
 │   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
-│   │       ├── realtime/ # gateway Socket.io : authentification au handshake, rooms, événements
+│   │       ├── realtime/ # gateway Socket.io : authentification au handshake, rooms, événements, adapter Redis
+│   │       ├── redis/    # client Redis partagé (healthcheck)
 │   │       ├── tickets/  # tickets : création (numérotation par tenant), liste (filtres, recherche, curseur), statut / priorité / assignation
 │   │       └── users/    # liste des membres (isolation tenant), invitations
 │   └── web/              # Next.js App Router + Tailwind + shadcn/ui (Vitest, ESLint)
@@ -183,8 +185,31 @@ deskflow/
   - `ticket:<id>:agents` reçoit les **notes internes** : elles ne sont jamais émises vers une room où se trouve un client, au lieu de compter sur le navigateur pour les masquer.
 
   On suit un ticket avec `ticket.join`, qui applique **la même règle d'accès** que l'API REST (tenant, puis client propriétaire) en ouvrant un contexte tenant pour passer par le client Prisma filtré. Les événements sont émis par un petit `RealtimeService`, **après** le commit de la transaction (jamais un événement pour une écriture annulée), avec les mêmes formes que les réponses REST (types dans `packages/shared`). Les tests e2e connectent de vrais clients Socket.io et vérifient l'isolation tenant et l'absence de fuite des notes internes (le test échoue si on retire le filtrage). Limite assumée : un socket reste connecté après l'expiration de son JWT (15 min) ; à la reconnexion, c'est le nouveau cookie qui est vérifié.
+- **Temps réel sur plusieurs instances** : voir la section dédiée ci-dessous.
 - **Rate limiting** (`@nestjs/throttler`) sur la connexion et l'inscription uniquement : 5 tentatives par minute et par IP, puis **429**. Le compteur est vérifié avant la validation du body et avant toute lecture en base.
 - **SeaweedFS** en local pour le stockage objet : API S3, donc le même code fonctionne avec S3 / R2 en production (MinIO ne publie plus d'images Docker).
+
+## Temps réel sur plusieurs instances
+
+Socket.io garde ses rooms **en mémoire**. Avec une seule instance de l'API, c'est suffisant. Avec deux, un message envoyé à l'instance 1 n'atteindrait pas un navigateur connecté à l'instance 2 : elle ne connaît pas ses sockets.
+
+```
+Navigateur A ──ws──▶ api-1 ──┐                 ┌──▶ api-2 ──ws──▶ Navigateur B
+                             └─ PUBLISH ─▶ Redis ─ message ─┘
+```
+
+L'**adapter Redis** (`@socket.io/redis-adapter`) fait passer chaque émission par le pub/sub Redis : l'instance qui émet publie l'événement et chaque instance le relaie aux sockets **qu'elle porte** dans la room visée. Le code métier ne change pas (`server.to(room).emit(...)`), et l'isolation par rooms (tenant, ticket, agents) reste la même d'une instance à l'autre. Deux connexions Redis sont dédiées à Socket.io, car une connexion abonnée ne peut rien faire d'autre ; elles sont fermées proprement à l'arrêt (`SIGTERM`, `app.close()`). `/health` vérifie aussi Redis : sans lui, une instance ne recevrait plus les événements des autres.
+
+Les clients se connectent en transport **`websocket` uniquement** (c'est le cas des tests ; le front fera de même). Le transport par défaut commence en *long-polling* : une suite de requêtes HTTP qui doivent toutes tomber sur la même instance, ce qui exige des *sticky sessions* côté load balancer. Une connexion WebSocket, elle, reste attachée à l'instance qui l'a ouverte.
+
+**Démo** :
+
+```bash
+docker compose up -d --scale api=2   # api-1 sur le port 3001, api-2 sur le port 3002
+curl localhost:3002/health           # chaque instance répond séparément
+```
+
+Un client connecté à l'instance 2 reçoit alors les événements des requêtes traitées par l'instance 1. Le test e2e `test/realtime/multi-instance.e2e-spec.ts` le vérifie automatiquement : il démarre deux instances de l'API (deux ports, même base, même Redis) et échoue si l'on retire l'adapter.
 
 ## Dépannage
 
@@ -201,7 +226,7 @@ deskflow/
 
 - **Cookies en production** : en dev, le front et l'API partagent `localhost`, donc les cookies posés par l'API sont visibles du serveur Next.js. En production, il faudra servir les deux sur le même site (ex. `app.exemple.com` et `api.exemple.com`, avec l'attribut `Domain` sur les cookies) ou faire passer l'API par le serveur Next.js.
 - **Recherche** : seuls les sujets sont indexés. Chercher aussi dans les messages demanderait un `tsvector` sur les messages (ou un moteur dédié si les volumes explosent). Pour un tenant avec énormément de résultats, la recherche passerait entièrement en SQL (filtres et pagination compris) plutôt que de transmettre la liste des identifiants trouvés.
-- **Rate limiting multi-instances** : les compteurs sont en mémoire, donc propres à chaque instance de l'API. Avec plusieurs instances (Jalon 3), il faudra les partager dans Redis (stockage Redis pour `@nestjs/throttler`).
+- **Rate limiting multi-instances** : les compteurs sont en mémoire, donc propres à chaque instance de l'API : avec deux instances, un attaquant dispose de deux fois plus d'essais. Il faudrait les partager dans Redis (stockage Redis pour `@nestjs/throttler`).
 
 ## Feuille de route
 

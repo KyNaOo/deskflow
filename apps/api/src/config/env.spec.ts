@@ -3,6 +3,7 @@ import { validateEnv } from './env.js';
 const validEnv = {
   DATABASE_URL: 'postgresql://user:password@localhost:5432/deskflow',
   JWT_SECRET: 'a'.repeat(32),
+  REDIS_URL: 'redis://localhost:6379',
   SMTP_URL: 'smtp://localhost:1025',
   WEB_URL: 'http://localhost:3000',
 };
@@ -14,6 +15,7 @@ describe('validateEnv', () => {
       PORT: 3001,
       DATABASE_URL: validEnv.DATABASE_URL,
       JWT_SECRET: validEnv.JWT_SECRET,
+      REDIS_URL: validEnv.REDIS_URL,
       SMTP_URL: validEnv.SMTP_URL,
       WEB_URL: validEnv.WEB_URL,
     });

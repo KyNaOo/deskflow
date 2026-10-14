@@ -11,6 +11,8 @@ export const envSchema = z.object({
   DATABASE_URL: z.url(),
   // Signe les access tokens : quiconque le connaît peut fabriquer un JWT valide
   JWT_SECRET: z.string().min(32),
+  // Pub/sub du temps réel entre instances de l'API
+  REDIS_URL: z.url(),
   // Serveur d'envoi des e-mails : Mailpit en développement
   SMTP_URL: z.url(),
   // Adresse du front, pour les liens envoyés par e-mail

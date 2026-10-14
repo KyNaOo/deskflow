@@ -13,6 +13,7 @@ import { HealthModule } from './health/health.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { MessagesModule } from './messages/messages.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { RedisModule } from './redis/redis.module.js';
 import { TenantsModule } from './tenants/tenants.module.js';
 import { TicketsModule } from './tickets/tickets.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -33,6 +34,7 @@ import { UsersModule } from './users/users.module.js';
     // Ouvre un contexte isolé par requête (AsyncLocalStorage), alimenté ensuite par JwtAuthGuard
     ClsModule.forRoot({ global: true, middleware: { mount: true } }),
     PrismaModule,
+    RedisModule,
     MailModule,
     HealthModule,
     AuthModule,
