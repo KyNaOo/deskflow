@@ -1,0 +1,8 @@
+// Worker en mode watch (start:worker:dev) : compilé dans son propre dossier, pour ne pas
+// vider ni réécrire le dist/ de l'api, compilée en parallèle dans un autre conteneur
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "outDir": "./dist-worker"
+  }
+}

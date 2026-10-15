@@ -11,8 +11,11 @@ export const envSchema = z.object({
   DATABASE_URL: z.url(),
   // Signe les access tokens : quiconque le connaît peut fabriquer un JWT valide
   JWT_SECRET: z.string().min(32),
-  // Pub/sub du temps réel entre instances de l'API
+  // Pub/sub du temps réel entre instances de l'API, files de jobs (BullMQ)
   REDIS_URL: z.url(),
+  // Préfixe des clés Redis des files : chaque fichier de test e2e a le sien, pour ne pas
+  // partager ses jobs avec le worker de dev ni avec les autres suites
+  QUEUE_PREFIX: z.string().min(1).default('deskflow'),
   // Stockage S3 des pièces jointes (SeaweedFS en local, S3 / R2 en production)
   S3_ENDPOINT: z.url(),
   // Adresse du stockage vue par le navigateur, signée dans les URL présignées

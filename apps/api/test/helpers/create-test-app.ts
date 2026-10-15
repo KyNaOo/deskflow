@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { DynamicModule, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { Logger } from 'nestjs-pino';
@@ -9,13 +9,16 @@ import { RealtimeIoAdapter } from '../../src/realtime/realtime-io.adapter.js';
 interface TestAppOptions {
   /** À désactiver dans les suites qui enchaînent plus de connexions/inscriptions que la limite. */
   rateLimit?: boolean;
+  /** Modules ajoutés à l'app, ex. une file de test : `BullModule.registerQueue(...)`. */
+  imports?: DynamicModule[];
 }
 
 /** Démarre l'application complète (config, base réelle, pipes globaux) pour les tests e2e. */
-export async function createTestApp({ rateLimit = true }: TestAppOptions = {}): Promise<
-  INestApplication<App>
-> {
-  const builder = Test.createTestingModule({ imports: [AppModule] });
+export async function createTestApp({
+  rateLimit = true,
+  imports = [],
+}: TestAppOptions = {}): Promise<INestApplication<App>> {
+  const builder = Test.createTestingModule({ imports: [AppModule, ...imports] });
   if (!rateLimit) {
     builder.overrideGuard(ThrottlerGuard).useValue({ canActivate: () => true });
   }

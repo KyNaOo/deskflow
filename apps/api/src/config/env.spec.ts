@@ -21,6 +21,7 @@ describe('validateEnv', () => {
       DATABASE_URL: validEnv.DATABASE_URL,
       JWT_SECRET: validEnv.JWT_SECRET,
       REDIS_URL: validEnv.REDIS_URL,
+      QUEUE_PREFIX: 'deskflow',
       S3_ENDPOINT: validEnv.S3_ENDPOINT,
       S3_PUBLIC_URL: validEnv.S3_PUBLIC_URL,
       S3_REGION: 'us-east-1',

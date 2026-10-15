@@ -50,6 +50,19 @@ services:
       retries: 3
       start_period: 30s # laisse le temps à la compilation en mode watch
 
+  # Exécute les jobs (e-mails, tâches planifiées) ajoutés par l'api dans Redis.
+  # Même code que l'api, autre point d'entrée (src/worker.ts), sans serveur HTTP.
+  # Plusieurs instances possibles : `docker compose up --scale worker=2`
+  worker:
+    <<: *node-dev
+    command: ["pnpm", "--filter", "api", "start:worker:dev"]
+    # Laisse au job en cours le temps de se terminer avant l'arrêt forcé
+    stop_grace_period: 30s
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      s3-setup: { condition: service_completed_successfully }
+
   web:
     <<: *node-dev
     command: ["pnpm", "--filter", "web", "dev"]

@@ -6,6 +6,7 @@ packages:
 allowBuilds:
   "@prisma/engines": true
   esbuild: true
+  msgpackr-extract: false # accélération native facultative de BullMQ
   prisma: true
   sharp: false
   unrs-resolver: false

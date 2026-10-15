@@ -15,12 +15,11 @@ import {
   ticketRoomRequestSchema,
 } from '@deskflow/shared';
 import { parseCookie } from 'cookie';
-import { ClsService } from 'nestjs-cls';
 import type { Server, Socket } from 'socket.io';
 import { ACCESS_TOKEN_COOKIE } from '../auth/auth.constants.js';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { TokenService } from '../auth/token.service.js';
-import type { TenantStore } from '../common/tenant-store.js';
+import { TenantContext } from '../common/tenant-context.js';
 import { Role } from '../generated/prisma/client.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
 import { ticketAccessFilter } from '../tickets/ticket-access.js';
@@ -50,7 +49,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
 
   constructor(
     private readonly tokens: TokenService,
-    private readonly cls: ClsService<TenantStore>,
+    private readonly tenantContext: TenantContext,
     @Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma,
   ) {}
 
@@ -164,11 +163,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
    * JWT, pour lire la base à travers le même client Prisma filtré que le reste de l'API.
    */
   private withTenant<T>(user: AuthenticatedUser, read: () => Promise<T>): Promise<T> {
-    return this.cls.run(async () => {
-      this.cls.set('tenantId', user.tenantId);
-      // Attendu ici : une requête Prisma ne part qu'au premier await, qui doit être dans le contexte
-      return await read();
-    });
+    return this.tenantContext.run(user.tenantId, read);
   }
 }
 

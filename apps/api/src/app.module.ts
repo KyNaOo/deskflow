@@ -1,19 +1,14 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
-import { ClsModule } from 'nestjs-cls';
-import { LoggerModule } from 'nestjs-pino';
 import { AttachmentsModule } from './attachments/attachments.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
-import { loggerConfig } from './common/logger.config.js';
 import { ZodValidationPipe } from './common/zod-validation.js';
-import { type Env, validateEnv } from './config/env.js';
+import { CoreModule } from './core.module.js';
 import { HealthModule } from './health/health.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { MessagesModule } from './messages/messages.module.js';
-import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { TenantsModule } from './tenants/tenants.module.js';
 import { TicketsModule } from './tickets/tickets.module.js';
@@ -21,20 +16,7 @@ import { UsersModule } from './users/users.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      // Les variables sont injectées par Docker Compose : pas de lecture de fichier .env
-      ignoreEnvFile: true,
-      validate: validateEnv,
-    }),
-    LoggerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService<Env, true>) =>
-        loggerConfig(config.get('NODE_ENV', { infer: true })),
-    }),
-    // Ouvre un contexte isolé par requête (AsyncLocalStorage), alimenté ensuite par JwtAuthGuard
-    ClsModule.forRoot({ global: true, middleware: { mount: true } }),
-    PrismaModule,
+    CoreModule,
     RedisModule,
     MailModule,
     HealthModule,

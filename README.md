@@ -4,7 +4,7 @@
 
 Help desk SaaS multi-tenant avec assistant IA : tickets, chat temps réel entre clients et agents, suggestions de réponse basées sur la base de connaissances de chaque organisation (RAG).
 
-> 🚧 Projet en cours de construction — Jalons 0 (socle), 1 (authentification et multi-tenant) et 2 (tickets et messages) terminés, prochaine étape : temps réel et pièces jointes.
+> 🚧 Projet en cours de construction — Jalons 0 (socle), 1 (authentification et multi-tenant), 2 (tickets et messages) et 3 (temps réel et pièces jointes) terminés, en cours : traitements asynchrones.
 
 **Stack :** TypeScript · NestJS · Next.js · PostgreSQL + pgvector · Redis · BullMQ · Socket.io · Docker · Turborepo
 
@@ -56,6 +56,7 @@ Le seed crée aussi 50 tickets de démonstration (statuts, priorités et assigna
 |---|---|---|
 | `web` | http://localhost:3000 | Front Next.js |
 | `api` | http://localhost:3001 | API NestJS — état de santé (base + Redis) : http://localhost:3001/health |
+| `worker` | — | Exécute les jobs en arrière-plan (même code que l'api, sans serveur HTTP) : `docker compose logs -f worker` |
 | `postgres` | `localhost:5432` | PostgreSQL 18 + pgvector (user / mdp / base : `deskflow`) |
 | `redis` | `localhost:6379` | Pub/sub du temps réel entre instances, files BullMQ |
 | `s3` | http://localhost:8333 | API S3 (SeaweedFS) — un `AccessDenied` dans le navigateur est **normal** : l'API exige des requêtes signées |
@@ -118,11 +119,13 @@ docker compose exec postgres psql -U deskflow   # console SQL
 # Stack Docker
 docker compose up -d                 # en arrière-plan
 docker compose logs -f api           # suivre les logs d'un service
+docker compose logs -f worker        # une ligne par job exécuté (file, id, tentative, durée)
 docker compose restart api
 docker compose down                  # arrêter
 docker compose down -v               # arrêter ET supprimer les données (BDD, Redis, S3)
 docker compose build tools           # reconstruire l'image de dev (après modif du Dockerfile)
 docker compose up -d --scale api=2   # deux instances de l'api (ports 3001 et 3002)
+docker compose up -d --scale worker=2  # deux workers : les jobs sont répartis entre eux
 ```
 
 > Astuce : les `node_modules` sont écrits dans le dossier du projet avec votre UID, donc VS Code (autocomplétion, typecheck) fonctionne normalement.
@@ -141,11 +144,15 @@ deskflow/
 │   │       ├── messages/ # conversation d'un ticket, notes internes, statut automatique
 │   │       ├── common/   # filtre d'erreurs, logs, validation zod, contexte tenant
 │   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
+│   │       ├── queues/   # connexion BullMQ, options des jobs, base des processors (logs)
 │   │       ├── realtime/ # gateway Socket.io : authentification au handshake, rooms, événements, adapter Redis
 │   │       ├── redis/    # client Redis partagé (healthcheck)
 │   │       ├── storage/  # client S3 : formulaires d'envoi et URL de lecture présignés
 │   │       ├── tickets/  # tickets : création (numérotation par tenant), liste (filtres, recherche, curseur), statut / priorité / assignation
-│   │       └── users/    # liste des membres (isolation tenant), invitations
+│   │       ├── users/    # liste des membres (isolation tenant), invitations
+│   │       ├── core.module.ts   # socle commun à l'api et au worker (config, logs, base, files)
+│   │       ├── main.ts          # point d'entrée de l'api (serveur HTTP + WebSocket)
+│   │       └── worker.ts        # point d'entrée du worker (jobs, sans serveur HTTP)
 │   └── web/              # Next.js App Router + Tailwind + shadcn/ui (Vitest, ESLint)
 │       ├── app/(auth)/   # connexion, inscription, acceptation d'invitation
 │       ├── app/portal/[tenant]/ # portail client : inscription, mes demandes, conversation
@@ -230,6 +237,23 @@ curl localhost:3002/health           # chaque instance répond séparément
 ```
 
 Un client connecté à l'instance 2 reçoit alors les événements des requêtes traitées par l'instance 1. Le front, lui, vise toujours `NEXT_PUBLIC_API_URL` (instance 1) : pour le voir réagir à l'instance 2, envoyer une réponse avec `curl` sur le port 3002 (après un `POST /auth/login` sur ce port) et regarder le ticket ouvert dans le navigateur. Le test e2e `test/realtime/multi-instance.e2e-spec.ts` le vérifie automatiquement : il démarre deux instances de l'API (deux ports, même base, même Redis) et échoue si l'on retire l'adapter.
+
+## Traitements asynchrones (worker)
+
+Certaines tâches n'ont pas leur place dans une requête HTTP : envoyer un e-mail (un serveur SMTP lent ou en panne ne doit ni ralentir ni faire échouer la réponse), ou parcourir périodiquement tous les tickets. Elles sont confiées à un process séparé, le **worker**, par l'intermédiaire de files **BullMQ** stockées dans Redis :
+
+```
+api ── queue.add(job) ──▶ Redis (files BullMQ) ──▶ worker ── processor ──▶ base, SMTP, S3…
+```
+
+- **Même code, autre point d'entrée** : `src/worker.ts` démarre un contexte Nest **sans serveur HTTP** (`createApplicationContext`), avec le même socle que l'API (`CoreModule` : config validée, logs pino, contexte tenant, Prisma, connexion aux files). Les *processors* ne sont déclarés que dans `WorkerModule` : l'API ajoute des jobs mais ne les exécute jamais.
+- **Découplage** : si le worker est arrêté, l'API répond normalement et les jobs attendent dans Redis, puis sont traités à son redémarrage. Avec plusieurs workers (`--scale worker=2`), BullMQ distribue les jobs et chacun n'est exécuté qu'une fois.
+- **Arrêt propre** : sur `SIGTERM` (`docker compose stop worker`), le worker termine le job en cours avant de s'arrêter (`stop_grace_period: 30s`). S'il est tué en plein job, BullMQ détecte le job abandonné (verrou expiré) et le relance.
+- **Retries** : un job en échec est retenté (3 tentatives par défaut, *backoff* exponentiel). Les jobs terminés sont purgés au bout de 24 h, ceux en échec conservés 7 jours pour diagnostic.
+- **Contexte tenant** : un job n'a pas de requête HTTP, donc pas de JWT. Il porte son `tenantId` dans ses données, et le processor ouvre le contexte du tenant (`TenantContext.run`, comme la gateway WebSocket) pour passer par le même client Prisma filtré que l'API. Un test e2e vérifie qu'un job ne voit pas les données d'un autre tenant.
+- **Logs** : une ligne par job exécuté (file, nom, id, tentative, durée, erreur éventuelle) : `docker compose logs -f worker`.
+- **Connexion Redis** : BullMQ 6 crée ses connexions avec `ioredis`, qu'il ne sait pas charger dans une application ESM ; il utilise ici le client `redis` (node-redis) déjà présent dans l'API, via son API de changement de driver (`RedisConnection.clientFactory`).
+- **Tests** : chaque fichier de test e2e utilise son propre préfixe de files (`QUEUE_PREFIX`), supprimé à la fin, pour ne partager ses jobs ni avec le worker de dev ni avec les autres suites.
 
 ## Dépannage
 
