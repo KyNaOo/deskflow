@@ -19,7 +19,8 @@ export abstract class JobProcessor<Data = unknown, Result = void> extends Worker
       job: job.name,
       jobId: job.id,
       attempt: job.attemptsMade + 1,
-      maxAttempts: job.opts.attempts ?? 1,
+      // BullMQ fait toujours au moins une tentative, même avec `attempts: 0`
+      maxAttempts: Math.max(job.opts.attempts ?? 1, 1),
       durationMs: Math.round(performance.now() - startedAt),
     });
 

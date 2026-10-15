@@ -4,7 +4,7 @@
 
 Help desk SaaS multi-tenant avec assistant IA : tickets, chat temps réel entre clients et agents, suggestions de réponse basées sur la base de connaissances de chaque organisation (RAG).
 
-> 🚧 Projet en cours de construction — Jalons 0 (socle), 1 (authentification et multi-tenant), 2 (tickets et messages) et 3 (temps réel et pièces jointes) terminés, en cours : traitements asynchrones.
+> 🚧 Projet en cours de construction — Jalons 0 (socle), 1 (authentification et multi-tenant), 2 (tickets et messages), 3 (temps réel et pièces jointes) et 4 (traitements asynchrones) terminés, prochaine étape : assistant IA (RAG).
 
 **Stack :** TypeScript · NestJS · Next.js · PostgreSQL + pgvector · Redis · BullMQ · Socket.io · Docker · Turborepo
 
@@ -138,7 +138,7 @@ deskflow/
 │   ├── api/              # NestJS (Vitest, oxlint)
 │   │   ├── prisma/       # schema.prisma, migrations SQL, seed
 │   │   └── src/
-│   │       ├── attachments/ # pièces jointes : signature de l'envoi, rattachement aux messages, téléchargement contrôlé
+│   │       ├── attachments/ # pièces jointes : signature de l'envoi, rattachement aux messages, téléchargement contrôlé, nettoyage des orphelines
 │   │       ├── auth/     # inscription, connexion, JWT + refresh tokens, guards, acceptation d'invitation
 │   │       ├── mail/     # envoi SMTP (Nodemailer → Mailpit en dev), utilisé par le worker seulement
 │   │       ├── messages/ # conversation d'un ticket, notes internes, statut automatique
@@ -276,13 +276,22 @@ Envoyer l'e-mail pendant la requête HTTP poserait deux problèmes : un serveur 
 Un ticket résolu attend une éventuelle réponse du client, qui le rouvrirait. Sans nouvelle au bout de **7 jours** (`AUTO_CLOSE_AFTER_DAYS`), il est clos automatiquement : la liste des agents reste propre, et le ticket ne peut plus être rouvert par erreur des semaines plus tard.
 
 - **Planification** : chaque worker déclare au démarrage un planning BullMQ (`upsertJobScheduler`, toutes les heures à `hh:00`), **sous un identifiant fixe**. Redis n'en garde qu'un : avec deux workers, il y a un seul planning et un seul job par créneau, exécuté par l'un des deux. Un créneau manqué (worker arrêté) est rattrapé au suivant, puisque le job traite tout ce qui a expiré.
-- **Requête transverse** : le job traite **tous les tenants** à la fois et n'agit pour le compte d'aucun utilisateur. C'est le seul code métier, avec le seed, qui utilise le client Prisma non filtré, explicitement et avec un commentaire qui le justifie.
+- **Requête transverse** : le job traite **tous les tenants** à la fois et n'agit pour le compte d'aucun utilisateur. Avec le nettoyage des pièces jointes et le seed, c'est le seul code métier qui utilise le client Prisma non filtré, explicitement et avec un commentaire qui le justifie.
 - **Mise à jour conditionnelle** : la condition `status = RESOLVED AND resolved_at < now() - 7 jours` est répétée **dans l'`UPDATE`** lui-même. Un ticket rouvert par le client entre la lecture et l'écriture n'est donc pas clos. La transition `RESOLVED → CLOSED` passe par la machine à états partagée, et `resolvedAt` est conservé (indicateur du délai de résolution, Jalon 6).
 - **Par lots** de 500 tickets : chaque transaction reste courte, même après une longue interruption.
 - **Temps réel depuis le worker** : le worker n'a pas de serveur Socket.io. Il publie `ticket.updated` dans Redis avec `@socket.io/redis-emitter`, sur le canal de l'adapter des instances de l'API, qui le relaient aux navigateurs des rooms visées (agents du tenant, participants du ticket). Un agent ou un client qui a le ticket ouvert le voit passer en « Clos » sans recharger.
 - **Synthèse** : la ligne de log du job indique le nombre de tickets clos (`"result":{"closed":3}`).
 
 > En dev, les tests e2e utilisent la même base : leur exécution clôt aussi les tickets du seed résolus depuis plus de 7 jours, comme le ferait le worker au créneau suivant.
+
+### Tâche planifiée : nettoyage des pièces jointes orphelines
+
+Une pièce jointe est enregistrée au moment où l'API signe son envoi, avant que le message ne parte. Si l'utilisateur abandonne son message, le fichier reste dans le stockage sans jamais être rattaché. Chaque nuit (3 h UTC), un job supprime les pièces jointes **sans message créées il y a plus de 24 h**, bien au-delà des 5 minutes de validité du formulaire d'envoi : un message en cours de rédaction n'est jamais touché, ni une pièce jointe rattachée.
+
+- **Stockage d'abord, base ensuite**, par lots de 1 000 (limite de `DeleteObjects`). Si la base échoue après le stockage, les lignes restent et le passage suivant recommence : un objet **déjà absent n'est pas une erreur** pour S3, le job peut donc être rejoué sans risque. Dans l'ordre inverse, un échec du stockage laisserait des fichiers que plus aucune ligne ne référence, donc introuvables.
+- **Suppression conditionnelle en base** (`message_id IS NULL`) : une pièce jointe rattachée entre la lecture et la suppression n'est pas effacée.
+- **Synthèse** dans la ligne de log du job : `"result":{"deletedFiles":12,"freedBytes":3481210}`.
+- Testé sur le vrai SeaweedFS : orpheline ancienne supprimée (objet et ligne), orpheline récente et pièce jointe rattachée conservées, objet déjà absent toléré, seconde exécution sans effet.
 
 ## Dépannage
 
@@ -300,7 +309,7 @@ Un ticket résolu attend une éventuelle réponse du client, qui le rouvrirait. 
 
 - **Cookies en production** : en dev, le front et l'API partagent `localhost`, donc les cookies posés par l'API sont visibles du serveur Next.js. En production, il faudra servir les deux sur le même site (ex. `app.exemple.com` et `api.exemple.com`, avec l'attribut `Domain` sur les cookies) ou faire passer l'API par le serveur Next.js.
 - **Recherche** : seuls les sujets sont indexés. Chercher aussi dans les messages demanderait un `tsvector` sur les messages (ou un moteur dédié si les volumes explosent). Pour un tenant avec énormément de résultats, la recherche passerait entièrement en SQL (filtres et pagination compris) plutôt que de transmettre la liste des identifiants trouvés.
-- **Pièces jointes orphelines** : un fichier envoyé mais jamais rattaché à un message (formulaire abandonné) reste dans le stockage. Un job planifié (Jalon 4) pourrait supprimer ceux de plus de 24 h, ainsi que les objets des tickets supprimés.
+- **Objets des tickets supprimés** : supprimer un tenant (ou un ticket) efface ses pièces jointes en base par cascade, mais pas leurs fichiers dans le stockage. Le job de nettoyage pourrait aussi supprimer les objets que plus aucune ligne ne référence (parcours du bucket par préfixe `tenants/<id>/`).
 - **CORS du stockage** : SeaweedFS applique la règle du bucket aux objets (lecture), mais répond à toutes les origines au niveau du bucket lui-même, là où arrivent les envois. Ce n'est pas une faille, car chaque envoi exige un formulaire signé par l'API ; S3 ou R2 en production appliquent la règle partout.
 - **Rate limiting multi-instances** : les compteurs sont en mémoire, donc propres à chaque instance de l'API : avec deux instances, un attaquant dispose de deux fois plus d'essais. Il faudrait les partager dans Redis (stockage Redis pour `@nestjs/throttler`).
 
@@ -314,6 +323,6 @@ Un ticket résolu attend une éventuelle réponse du client, qui le rouvrirait. 
 - [x] Jalon 1 — Authentification et multi-tenant : inscription, JWT + refresh tokens (rotation, détection de vol), guards, isolation tenant, invitations, rate limiting, pages front
 - [x] Jalon 2 — Tickets et messages : numérotation par tenant, machine à états, liste (filtres, recherche plein texte, curseur), messages et notes internes, erreurs et logs, espace agents et portail client
 - [x] Jalon 3 — Temps réel et pièces jointes : gateway Socket.io authentifiée, adapter Redis (plusieurs instances), cache TanStack Query et optimistic update, indicateur de saisie, pièces jointes par URL présignée
-- [ ] Jalon 4 — Traitements asynchrones
+- [x] Jalon 4 — Traitements asynchrones : process worker (BullMQ), file d'e-mails avec retries, clôture automatique des tickets résolus, nettoyage des pièces jointes orphelines
 - [ ] Jalon 5 — Assistant IA (RAG)
 - [ ] Jalon 6 — Analytics, finition, déploiement

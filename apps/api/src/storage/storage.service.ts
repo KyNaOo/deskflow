@@ -1,4 +1,10 @@
-import { GetObjectCommand, HeadObjectCommand, NotFound, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  NotFound,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable } from '@nestjs/common';
@@ -8,6 +14,9 @@ import { contentDisposition } from './storage-keys.js';
 
 /** Durée de validité des URL présignées : juste le temps d'envoyer ou d'ouvrir le fichier. */
 const PRESIGNED_URL_TTL_SECONDS = 5 * 60;
+
+/** Limite de l'API S3 : DeleteObjects accepte au plus 1 000 clés par appel. */
+export const MAX_KEYS_PER_DELETE = 1_000;
 
 export type S3Settings = Pick<Env, 'S3_REGION' | 'S3_ACCESS_KEY' | 'S3_SECRET_KEY'>;
 
@@ -71,6 +80,27 @@ export class StorageService {
         return false;
       }
       throw error;
+    }
+  }
+
+  /**
+   * Supprime des objets en un appel (MAX_KEYS_PER_DELETE au plus). Une clé déjà absente n'est
+   * pas une erreur (comportement de S3) : une suppression peut être rejouée sans risque.
+   */
+  async deleteMany(keys: string[]): Promise<void> {
+    if (keys.length === 0) {
+      return;
+    }
+    const { Errors = [] } = await this.s3.send(
+      new DeleteObjectsCommand({
+        Bucket: this.bucket,
+        // Quiet : la réponse ne liste que les échecs
+        Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+      }),
+    );
+    if (Errors.length > 0) {
+      const [first] = Errors;
+      throw new Error(`${Errors.length} objet(s) non supprimé(s), ex. ${first!.Key} : ${first!.Code}`);
     }
   }
 

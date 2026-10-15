@@ -1,4 +1,3 @@
-import type { AttachmentUpload } from '@deskflow/shared';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
@@ -6,20 +5,11 @@ import { Role } from '../../src/generated/prisma/client.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
 import { createAccount, registerTenant, type TestAccount } from '../helpers/accounts.js';
 import { createTestApp } from '../helpers/create-test-app.js';
+import { uploadToStorage } from '../helpers/storage.js';
 
 const SLUG_PREFIX = 'e2e-attachments-';
 const CONTENT = 'Erreur 500 à 10:42\n';
 const FILE = { fileName: 'erreurs.log', mimeType: 'text/plain', size: Buffer.byteLength(CONTENT) };
-
-/** Envoi direct au stockage, comme le navigateur : champs signés, puis le fichier. */
-function uploadToStorage({ upload }: AttachmentUpload, content: string, fieldOverrides: Record<string, string> = {}) {
-  const form = new FormData();
-  for (const [name, value] of Object.entries({ ...upload.fields, ...fieldOverrides })) {
-    form.append(name, value);
-  }
-  form.append('file', new Blob([content]));
-  return fetch(upload.url, { method: 'POST', body: form });
-}
 
 describe('Pièces jointes — /tickets/:number/attachments (e2e, sur SeaweedFS)', () => {
   let app: INestApplication<App>;
