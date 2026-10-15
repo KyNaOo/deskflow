@@ -43,7 +43,7 @@ jobs:
       S3_ACCESS_KEY: ci-access-key
       S3_SECRET_KEY: ci-secret-key
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
-      # Aucun e-mail réellement envoyé : le Mailer est mocké dans les tests
+      # Aucun e-mail réellement envoyé : les tests lisent les jobs de la file, ou mockent l'envoi du worker
       SMTP_URL: smtp://localhost:1025
       WEB_URL: http://localhost:3000
 

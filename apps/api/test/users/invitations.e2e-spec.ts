@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { getQueueToken } from '@nestjs/bullmq';
 import { INestApplication } from '@nestjs/common';
+import type { Queue } from 'bullmq';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
-import type { Mock } from 'vitest';
 import { ACCESS_TOKEN_COOKIE } from '../../src/auth/auth.constants.js';
 import { hashSecretToken } from '../../src/auth/secret-token.js';
+import { EMAILS_QUEUE } from '../../src/emails/emails.queue.js';
 import { MailService, type MailMessage } from '../../src/mail/mail.service.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
 import { getCookieValue } from '../helpers/cookies.js';
@@ -15,12 +17,13 @@ const SLUG_PREFIX = 'e2e-invite-';
 describe('Invitations — POST /users/invite et /auth/accept-invitation (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
-  let sendMail: Mock<(message: MailMessage) => Promise<void>>;
+  let emails: Queue<MailMessage>;
   let admin: { tenantId: string; accessToken: string };
 
   beforeAll(async () => {
     app = await createTestApp();
     prisma = app.get(PrismaService);
+    emails = app.get(getQueueToken(EMAILS_QUEUE));
 
     const response = await request(app.getHttpServer())
       .post('/auth/register-tenant')
@@ -37,16 +40,6 @@ describe('Invitations — POST /users/invite et /auth/accept-invitation (e2e)', 
       tenantId: response.body.tenant.id,
       accessToken: getCookieValue(response, ACCESS_TOKEN_COOKIE)!,
     };
-  });
-
-  beforeEach(() => {
-    // Aucun e-mail réellement envoyé : on capture le message pour y lire le lien
-    sendMail = vi.fn<(message: MailMessage) => Promise<void>>().mockResolvedValue();
-    vi.spyOn(app.get(MailService), 'send').mockImplementation(sendMail);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   afterAll(async () => {
@@ -67,14 +60,20 @@ describe('Invitations — POST /users/invite et /auth/accept-invitation (e2e)', 
       .send({ token, name: 'Milton Agent', password: 'red-stapler-123' });
   }
 
+  /** E-mail confié au worker pour cette invitation (aucun worker ne tourne dans ce test). */
+  async function invitationEmail(invitationId: string): Promise<MailMessage> {
+    const job = await emails.getJob(`invitation-${invitationId}`);
+    return job!.data;
+  }
+
   /** Invite l'adresse donnée et renvoie le jeton lu dans le lien de l'e-mail. */
   async function inviteAndGetToken(email: string): Promise<string> {
-    await invite({ email, role: 'AGENT' }).expect(201);
-    const { text } = sendMail.mock.lastCall![0];
+    const response = await invite({ email, role: 'AGENT' }).expect(201);
+    const { text } = await invitationEmail(response.body.id);
     return text.match(/\/invitations\/([A-Za-z0-9_-]+)/)![1]!;
   }
 
-  it('un admin invite un agent : l’e-mail contient un lien vers le front', async () => {
+  it('un admin invite un agent : l’e-mail, confié au worker, contient un lien vers le front', async () => {
     const response = await invite({ email: ' Milton@Initech.test ', role: 'AGENT' }).expect(201);
 
     expect(response.body).toEqual({
@@ -83,13 +82,15 @@ describe('Invitations — POST /users/invite et /auth/accept-invitation (e2e)', 
       role: 'AGENT',
       expiresAt: expect.any(String),
     });
-    expect(sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: 'milton@initech.test',
-        subject: expect.stringContaining('Initech'),
-        text: expect.stringMatching(/http:\/\/localhost:3000\/invitations\/[A-Za-z0-9_-]{43}/),
-      }),
-    );
+    expect(await invitationEmail(response.body.id)).toEqual({
+      to: 'milton@initech.test',
+      subject: expect.stringContaining('Initech'),
+      text: expect.stringMatching(/http:\/\/localhost:3000\/invitations\/[A-Za-z0-9_-]{43}/),
+    });
+  });
+
+  it('l’API n’envoie jamais d’e-mail elle-même : aucun MailService dans l’application', () => {
+    expect(() => app.get(MailService)).toThrow();
   });
 
   it('stocke uniquement l’empreinte du jeton, valable 48 h', async () => {
@@ -104,9 +105,12 @@ describe('Invitations — POST /users/invite et /auth/accept-invitation (e2e)', 
     expect(hoursLeft).toBeLessThanOrEqual(48);
   });
 
-  it('refuse d’inviter un e-mail déjà membre (409)', async () => {
+  it('refuse d’inviter un e-mail déjà membre (409), sans e-mail', async () => {
+    const jobsBefore = await emails.count();
+
     await invite({ email: 'peter@initech.test', role: 'ADMIN' }).expect(409);
-    expect(sendMail).not.toHaveBeenCalled();
+
+    expect(await emails.count()).toBe(jobsBefore);
   });
 
   it('refuse d’inviter un client (400)', async () => {

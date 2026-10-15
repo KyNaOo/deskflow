@@ -4,7 +4,7 @@ import { publicUserSelect } from '../auth/public-user.js';
 import { generateSecretToken, hashSecretToken } from '../auth/secret-token.js';
 import { TenantContext } from '../common/tenant-context.js';
 import type { Env } from '../config/env.js';
-import { MailService } from '../mail/mail.service.js';
+import { EmailsService } from '../emails/emails.service.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
 import { InviteUserDto } from './dto/invite-user.dto.js';
 import { invitationEmail } from './invitation-email.js';
@@ -21,7 +21,7 @@ export class UsersService {
 
   constructor(
     @Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma,
-    private readonly mail: MailService,
+    private readonly emails: EmailsService,
     private readonly tenantContext: TenantContext,
     config: ConfigService<Env, true>,
   ) {
@@ -61,8 +61,9 @@ export class UsersService {
       select: { id: true, email: true, role: true, expiresAt: true, tenant: { select: { name: true } } },
     });
 
-    // Synchrone pour l'instant : passera dans une file BullMQ (retries) au Jalon 4
-    await this.mail.send(
+    // Envoyé par le worker : l'invitation est enregistrée même si le serveur SMTP est en panne
+    await this.emails.send(
+      `invitation-${invitation.id}`,
       invitationEmail({
         to: invitation.email,
         organizationName: invitation.tenant.name,

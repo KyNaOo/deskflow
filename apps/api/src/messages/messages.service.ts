@@ -1,6 +1,9 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { attachmentSelect, AttachmentsService } from '../attachments/attachments.service.js';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import type { Env } from '../config/env.js';
+import { EmailsService } from '../emails/emails.service.js';
 import { type Prisma, Role, TicketStatus } from '../generated/prisma/client.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
@@ -8,6 +11,7 @@ import { ticketAccessFilter } from '../tickets/ticket-access.js';
 import { ticketSelect } from '../tickets/ticket-select.js';
 import { automaticTransition } from './automatic-transition.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
+import { replyEmail } from './reply-email.js';
 
 const messageSelect = {
   id: true,
@@ -19,17 +23,35 @@ const messageSelect = {
   attachments: { select: attachmentSelect, orderBy: { createdAt: 'asc' } },
 } satisfies Prisma.MessageSelect;
 
+type Message = Prisma.MessageGetPayload<{ select: typeof messageSelect }>;
+
+const ticketSummarySelect = {
+  id: true,
+  number: true,
+  subject: true,
+  customer: { select: { email: true } },
+  tenant: { select: { slug: true } },
+} satisfies Prisma.TicketSelect;
+
+type TicketSummary = Prisma.TicketGetPayload<{ select: typeof ticketSummarySelect }>;
+
 /**
  * Les messages n'ont pas de tenantId : on y accède toujours à travers leur ticket, lui-même
  * filtré par tenant (client Prisma filtré) et par participant (ticketAccessFilter).
  */
 @Injectable()
 export class MessagesService {
+  private readonly webUrl: string;
+
   constructor(
     @Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma,
     private readonly realtime: RealtimeService,
     private readonly attachments: AttachmentsService,
-  ) {}
+    private readonly emails: EmailsService,
+    config: ConfigService<Env, true>,
+  ) {
+    this.webUrl = config.get('WEB_URL', { infer: true });
+  }
 
   /** Conversation dans l'ordre chronologique. Un client ne reçoit jamais les notes internes. */
   async list(reader: AuthenticatedUser, ticketNumber: number) {
@@ -113,13 +135,31 @@ export class MessagesService {
         await this.prisma.ticket.findFirstOrThrow({ where: { id: ticket.id }, select: ticketSelect }),
       );
     }
+    if (!isCustomer && !isInternalNote) {
+      await this.notifyCustomer(ticket, message);
+    }
     return message;
+  }
+
+  /** E-mail au client pour une réponse d'agent, ajouté après le commit (jamais pour un rollback). */
+  private notifyCustomer(ticket: TicketSummary, message: Message) {
+    return this.emails.send(
+      `reply-${message.id}`,
+      replyEmail({
+        to: ticket.customer.email,
+        agentName: message.author.name,
+        ticketNumber: ticket.number,
+        ticketSubject: ticket.subject,
+        messageBody: message.body,
+        link: `${this.webUrl}/portal/${ticket.tenant.slug}/tickets/${ticket.number}`,
+      }),
+    );
   }
 
   private async findTicket(reader: AuthenticatedUser, number: number) {
     const ticket = await this.prisma.ticket.findFirst({
       where: { number, ...ticketAccessFilter(reader) },
-      select: { id: true, number: true },
+      select: ticketSummarySelect,
     });
     if (!ticket) {
       throw new NotFoundException('Ticket introuvable');

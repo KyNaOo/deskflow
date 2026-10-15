@@ -7,7 +7,6 @@ import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { ZodValidationPipe } from './common/zod-validation.js';
 import { CoreModule } from './core.module.js';
 import { HealthModule } from './health/health.module.js';
-import { MailModule } from './mail/mail.module.js';
 import { MessagesModule } from './messages/messages.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { TenantsModule } from './tenants/tenants.module.js';
@@ -18,7 +17,6 @@ import { UsersModule } from './users/users.module.js';
   imports: [
     CoreModule,
     RedisModule,
-    MailModule,
     HealthModule,
     AuthModule,
     UsersModule,

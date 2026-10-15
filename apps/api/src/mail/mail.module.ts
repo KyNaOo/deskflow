@@ -1,7 +1,7 @@
-import { Global, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { MailService } from './mail.service.js';
 
-@Global()
+// Importé uniquement par le worker : l'API n'envoie jamais d'e-mail elle-même (file `emails`)
 @Module({
   providers: [MailService],
   exports: [MailService],

@@ -140,9 +140,10 @@ deskflow/
 │   │   └── src/
 │   │       ├── attachments/ # pièces jointes : signature de l'envoi, rattachement aux messages, téléchargement contrôlé
 │   │       ├── auth/     # inscription, connexion, JWT + refresh tokens, guards, acceptation d'invitation
-│   │       ├── mail/     # envoi d'e-mails (Nodemailer → Mailpit en dev)
+│   │       ├── mail/     # envoi SMTP (Nodemailer → Mailpit en dev), utilisé par le worker seulement
 │   │       ├── messages/ # conversation d'un ticket, notes internes, statut automatique
 │   │       ├── common/   # filtre d'erreurs, logs, validation zod, contexte tenant
+│   │       ├── emails/   # file `emails` : ajout côté api, envoi et retries côté worker
 │   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
 │   │       ├── queues/   # connexion BullMQ, options des jobs, base des processors (logs)
 │   │       ├── realtime/ # gateway Socket.io : authentification au handshake, rooms, événements, adapter Redis
@@ -179,7 +180,7 @@ deskflow/
 - **PostgreSQL + pgvector** plutôt qu'une base vectorielle dédiée : relationnel et embeddings dans la même base, les mêmes transactions et la même isolation par tenant.
 - **Prisma** : schéma unique, migrations SQL versionnées et client entièrement typé. Tables et colonnes en `snake_case` (`@map`) pour garder un SQL brut lisible là où Prisma ne suffit pas (recherche vectorielle, plein texte, analytics).
 - **Isolation multi-tenant automatique** : le `tenantId` vient toujours du JWT, jamais de la requête. `JwtAuthGuard` le dépose dans un contexte par requête (`nestjs-cls`, basé sur `AsyncLocalStorage`) et une extension Prisma l'ajoute à chaque requête sur les modèles concernés. Le code métier n'écrit jamais `where: { tenantId }` : il ne peut donc pas l'oublier. Une ressource d'un autre tenant renvoie **404** (et non 403, pour ne pas confirmer qu'elle existe), et une requête faite hors contexte tenant échoue au lieu de tout lire.
-- **Invitations à usage unique** : un admin invite un agent par e-mail (`POST /users/invite`). Comme le refresh token, le jeton est aléatoire et seule son empreinte SHA-256 est stockée. Il expire au bout de 48 h et son acceptation (`POST /auth/accept-invitation`) est conditionnelle, donc deux requêtes simultanées ne peuvent pas créer deux comptes. En dev, les e-mails arrivent dans Mailpit.
+- **Invitations à usage unique** : un admin invite un agent par e-mail (`POST /users/invite`). Comme le refresh token, le jeton est aléatoire et seule son empreinte SHA-256 est stockée. Il expire au bout de 48 h et son acceptation (`POST /auth/accept-invitation`) est conditionnelle, donc deux requêtes simultanées ne peuvent pas créer deux comptes. L'e-mail est envoyé par le worker (voir [Pourquoi l'envoi d'e-mail passe par une file](#pourquoi-lenvoi-de-mail-passe-par-une-file)) ; en dev, il arrive dans Mailpit.
 - **Session côté front** : les jetons restent dans des cookies `httpOnly`, que le JavaScript ne lit jamais. Le navigateur appelle l'API directement (CORS limité à `WEB_URL`, avec `credentials`). Les Server Components appellent l'API par le réseau Docker en transmettant les cookies de la requête. Sur un 401, le client renouvelle la session puis rejoue la requête une seule fois. Les requêtes qui reçoivent un 401 en même temps attendent **le même** refresh : deux refresh simultanés présenteraient le même jeton, ce que l'API traite comme un vol. Quand le cookie d'accès a expiré au moment de charger une page, `proxy.ts` redirige vers `/refresh`, qui renouvelle la session dans le navigateur (le refresh token n'est envoyé qu'aux routes `/auth` de l'API) puis renvoie vers la page demandée.
 - **Numéro de ticket séquentiel par tenant** (`#42`) : chaque organisation a sa propre séquence. Le numéro vient d'un compteur sur le tenant, incrémenté atomiquement (`UPDATE … SET ticket_counter = ticket_counter + 1 RETURNING`) dans la transaction qui crée le ticket. La ligne du tenant reste verrouillée jusqu'au commit, donc deux créations simultanées ne peuvent pas obtenir le même numéro ; un `MAX(number) + 1` le permettrait, ce que le test de 20 créations simultanées détecte. Les routes désignent un ticket par ce numéro (`GET /tickets/42`) : il est unique dans le tenant, et le tenant vient du JWT.
 - **Liste des tickets : pagination par curseur** plutôt que par `OFFSET`. Le curseur (opaque, en base64url) contient la position du dernier ticket vu (`updatedAt`, `id`) : la page suivante reprend juste après, sans que PostgreSQL relise les pages précédentes, et un ticket créé entre deux pages ne décale pas la liste. L'`id` départage les tickets de même date. Un index `(tenant_id, updated_at DESC, id DESC)` sert cet ordre directement (vérifié avec `EXPLAIN` sur 20 000 tickets).
@@ -254,6 +255,21 @@ api ── queue.add(job) ──▶ Redis (files BullMQ) ──▶ worker ──
 - **Logs** : une ligne par job exécuté (file, nom, id, tentative, durée, erreur éventuelle) : `docker compose logs -f worker`.
 - **Connexion Redis** : BullMQ 6 crée ses connexions avec `ioredis`, qu'il ne sait pas charger dans une application ESM ; il utilise ici le client `redis` (node-redis) déjà présent dans l'API, via son API de changement de driver (`RedisConnection.clientFactory`).
 - **Tests** : chaque fichier de test e2e utilise son propre préfixe de files (`QUEUE_PREFIX`), supprimé à la fin, pour ne partager ses jobs ni avec le worker de dev ni avec les autres suites.
+
+### Pourquoi l'envoi d'e-mail passe par une file
+
+Deux e-mails partent de Deskflow : l'**invitation** d'un agent, et la **notification au client** quand un agent lui répond (sujet `[#42] <sujet du ticket>`, extrait du message, lien vers le ticket dans le portail). Une note interne ou un message du client n'en déclenche aucun.
+
+Envoyer l'e-mail pendant la requête HTTP poserait deux problèmes : un serveur SMTP lent ralentirait la réponse, et un serveur en panne la ferait échouer alors que le message ou l'invitation est déjà enregistré. L'API se contente donc d'**ajouter un job** dans la file `emails`, après le commit de la transaction, puis répond. Le worker l'envoie ensuite.
+
+- **Si l'envoi échoue** (SMTP injoignable, refus temporaire), le job est retenté **5 fois** avec un *backoff* exponentiel : 10 s, 20 s, 40 s, 80 s. Une panne de quelques minutes ne fait donc perdre aucun e-mail : il part au retry suivant le retour du serveur.
+- **Après la dernière tentative**, le job reste **en échec dans Redis** pendant 7 jours, avec son erreur, et chaque tentative est journalisée (`docker compose logs worker`) pour le diagnostic.
+- **Idempotence** : l'identifiant du job est déterminé par l'événement (`reply-<messageId>`, `invitation-<invitationId>`). BullMQ ignore un second ajout avec le même identifiant, donc un même événement ne produit jamais deux e-mails.
+- **Aucun envoi SMTP dans l'API** : `MailService` n'est fourni qu'au worker, ce qu'un test e2e vérifie.
+- **Texte brut** : sujet et message, saisis par des utilisateurs, ne sont jamais interprétés comme du HTML.
+- **Limite assumée** : le lien d'invitation, dont seule l'empreinte est en base, figure en clair dans le job le temps de son envoi, puis 24 h (7 jours en cas d'échec). Redis n'est pas exposé publiquement.
+
+**Démo** : arrêter Mailpit (`docker compose stop mailpit`), répondre à un ticket depuis l'espace agents : la réponse s'affiche aussitôt et le worker journalise un échec. Relancer Mailpit (`docker compose start mailpit`) : l'e-mail arrive au retry suivant, sur http://localhost:8026.
 
 ## Dépannage
 
