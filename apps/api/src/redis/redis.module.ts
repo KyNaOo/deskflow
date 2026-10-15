@@ -18,7 +18,8 @@ export async function connectRedis(url: string) {
   return client;
 }
 
-// Global : client partagé, injectable partout (healthcheck). Socket.io a ses propres clients pub/sub.
+// Global : client partagé, injectable partout (healthcheck de l'API, événements temps réel émis
+// par le worker). Socket.io a ses propres clients pub/sub.
 @Global()
 @Module({
   providers: [

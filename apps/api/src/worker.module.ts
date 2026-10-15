@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { CoreModule } from './core.module.js';
 import { EmailsWorkerModule } from './emails/emails-worker.module.js';
+import { RedisModule } from './redis/redis.module.js';
+import { TicketsWorkerModule } from './tickets/tickets-worker.module.js';
 
 /**
  * Point d'entrée du worker : le socle commun et les processors, qui ne sont déclarés qu'ici.
  * L'API ajoute des jobs dans les files mais ne les exécute jamais.
  */
 @Module({
-  imports: [CoreModule, EmailsWorkerModule],
+  imports: [CoreModule, RedisModule, EmailsWorkerModule, TicketsWorkerModule],
 })
 export class WorkerModule {}

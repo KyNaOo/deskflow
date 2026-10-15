@@ -146,10 +146,10 @@ deskflow/
 │   │       ├── emails/   # file `emails` : ajout côté api, envoi et retries côté worker
 │   │       ├── prisma/   # PrismaService (non filtré) + client filtré par tenant
 │   │       ├── queues/   # connexion BullMQ, options des jobs, base des processors (logs)
-│   │       ├── realtime/ # gateway Socket.io : authentification au handshake, rooms, événements, adapter Redis
-│   │       ├── redis/    # client Redis partagé (healthcheck)
+│   │       ├── realtime/ # gateway Socket.io : authentification au handshake, rooms, événements, adapter Redis ; émission depuis le worker
+│   │       ├── redis/    # client Redis partagé (healthcheck, événements émis par le worker)
 │   │       ├── storage/  # client S3 : formulaires d'envoi et URL de lecture présignés
-│   │       ├── tickets/  # tickets : création (numérotation par tenant), liste (filtres, recherche, curseur), statut / priorité / assignation
+│   │       ├── tickets/  # tickets : création (numérotation par tenant), liste (filtres, recherche, curseur), statut / priorité / assignation, clôture automatique
 │   │       ├── users/    # liste des membres (isolation tenant), invitations
 │   │       ├── core.module.ts   # socle commun à l'api et au worker (config, logs, base, files)
 │   │       ├── main.ts          # point d'entrée de l'api (serveur HTTP + WebSocket)
@@ -226,7 +226,7 @@ Navigateur A ──ws──▶ api-1 ──┐                 ┌──▶ api-
                              └─ PUBLISH ─▶ Redis ─ message ─┘
 ```
 
-L'**adapter Redis** (`@socket.io/redis-adapter`) fait passer chaque émission par le pub/sub Redis : l'instance qui émet publie l'événement et chaque instance le relaie aux sockets **qu'elle porte** dans la room visée. Le code métier ne change pas (`server.to(room).emit(...)`), et l'isolation par rooms (tenant, ticket, agents) reste la même d'une instance à l'autre. Deux connexions Redis sont dédiées à Socket.io, car une connexion abonnée ne peut rien faire d'autre ; elles sont fermées proprement à l'arrêt (`SIGTERM`, `app.close()`). `/health` vérifie aussi Redis : sans lui, une instance ne recevrait plus les événements des autres.
+L'**adapter Redis** (`@socket.io/redis-adapter`) fait passer chaque émission par le pub/sub Redis : l'instance qui émet publie l'événement et chaque instance le relaie aux sockets **qu'elle porte** dans la room visée. Le worker, qui n'a pas de serveur Socket.io, publie sur le même canal (`@socket.io/redis-emitter`) : ses événements suivent le même chemin. Le code métier ne change pas (`server.to(room).emit(...)`), et l'isolation par rooms (tenant, ticket, agents) reste la même d'une instance à l'autre. Deux connexions Redis sont dédiées à Socket.io, car une connexion abonnée ne peut rien faire d'autre ; elles sont fermées proprement à l'arrêt (`SIGTERM`, `app.close()`). `/health` vérifie aussi Redis : sans lui, une instance ne recevrait plus les événements des autres.
 
 Les clients se connectent en transport **`websocket` uniquement** (le front comme les tests). Le transport par défaut commence en *long-polling* : une suite de requêtes HTTP qui doivent toutes tomber sur la même instance, ce qui exige des *sticky sessions* côté load balancer. Une connexion WebSocket, elle, reste attachée à l'instance qui l'a ouverte.
 
@@ -270,6 +270,19 @@ Envoyer l'e-mail pendant la requête HTTP poserait deux problèmes : un serveur 
 - **Limite assumée** : le lien d'invitation, dont seule l'empreinte est en base, figure en clair dans le job le temps de son envoi, puis 24 h (7 jours en cas d'échec). Redis n'est pas exposé publiquement.
 
 **Démo** : arrêter Mailpit (`docker compose stop mailpit`), répondre à un ticket depuis l'espace agents : la réponse s'affiche aussitôt et le worker journalise un échec. Relancer Mailpit (`docker compose start mailpit`) : l'e-mail arrive au retry suivant, sur http://localhost:8026.
+
+### Tâche planifiée : clôture automatique des tickets résolus
+
+Un ticket résolu attend une éventuelle réponse du client, qui le rouvrirait. Sans nouvelle au bout de **7 jours** (`AUTO_CLOSE_AFTER_DAYS`), il est clos automatiquement : la liste des agents reste propre, et le ticket ne peut plus être rouvert par erreur des semaines plus tard.
+
+- **Planification** : chaque worker déclare au démarrage un planning BullMQ (`upsertJobScheduler`, toutes les heures à `hh:00`), **sous un identifiant fixe**. Redis n'en garde qu'un : avec deux workers, il y a un seul planning et un seul job par créneau, exécuté par l'un des deux. Un créneau manqué (worker arrêté) est rattrapé au suivant, puisque le job traite tout ce qui a expiré.
+- **Requête transverse** : le job traite **tous les tenants** à la fois et n'agit pour le compte d'aucun utilisateur. C'est le seul code métier, avec le seed, qui utilise le client Prisma non filtré, explicitement et avec un commentaire qui le justifie.
+- **Mise à jour conditionnelle** : la condition `status = RESOLVED AND resolved_at < now() - 7 jours` est répétée **dans l'`UPDATE`** lui-même. Un ticket rouvert par le client entre la lecture et l'écriture n'est donc pas clos. La transition `RESOLVED → CLOSED` passe par la machine à états partagée, et `resolvedAt` est conservé (indicateur du délai de résolution, Jalon 6).
+- **Par lots** de 500 tickets : chaque transaction reste courte, même après une longue interruption.
+- **Temps réel depuis le worker** : le worker n'a pas de serveur Socket.io. Il publie `ticket.updated` dans Redis avec `@socket.io/redis-emitter`, sur le canal de l'adapter des instances de l'API, qui le relaient aux navigateurs des rooms visées (agents du tenant, participants du ticket). Un agent ou un client qui a le ticket ouvert le voit passer en « Clos » sans recharger.
+- **Synthèse** : la ligne de log du job indique le nombre de tickets clos (`"result":{"closed":3}`).
+
+> En dev, les tests e2e utilisent la même base : leur exécution clôt aussi les tickets du seed résolus depuis plus de 7 jours, comme le ferait le worker au créneau suivant.
 
 ## Dépannage
 

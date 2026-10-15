@@ -26,11 +26,7 @@ export class RealtimeService {
   }
 
   ticketUpdated(ticket: { id: string }) {
-    this.emit(
-      [rooms.tenantAgents(this.tenantContext.tenantId), rooms.ticket(ticket.id)],
-      'ticket.updated',
-      ticket,
-    );
+    this.emit(rooms.ticketUpdated(this.tenantContext.tenantId, ticket.id), 'ticket.updated', ticket);
   }
 
   /** Une note interne ne part que vers la room des agents du ticket. */

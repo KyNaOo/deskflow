@@ -10,4 +10,9 @@ export const rooms = {
   ticket: (ticketId: string) => `ticket:${ticketId}`,
   /** Agents qui suivent un ticket : notes internes */
   ticketAgents: (ticketId: string) => `ticket:${ticketId}:agents`,
+  /** Destinataires de `ticket.updated` : les agents du tenant et les participants du ticket */
+  ticketUpdated: (tenantId: string, ticketId: string) => [
+    rooms.tenantAgents(tenantId),
+    rooms.ticket(ticketId),
+  ],
 };

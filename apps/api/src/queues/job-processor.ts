@@ -4,8 +4,8 @@ import type { Job } from 'bullmq';
 
 /**
  * Base de tous les processors du worker : une ligne de log par exécution (file, nom, id,
- * tentative, durée, erreur éventuelle). Une erreur est relancée pour que BullMQ applique
- * les tentatives restantes.
+ * tentative, durée, puis résultat ou erreur). Le résultat sert de synthèse (ex. nombre de
+ * tickets clos). Une erreur est relancée pour que BullMQ applique les tentatives restantes.
  */
 export abstract class JobProcessor<Data = unknown, Result = void> extends WorkerHost {
   private readonly logger = new Logger(this.constructor.name);
@@ -25,7 +25,7 @@ export abstract class JobProcessor<Data = unknown, Result = void> extends Worker
 
     try {
       const result = await this.handle(job);
-      this.logger.log(context(), 'Job terminé');
+      this.logger.log({ ...context(), result }, 'Job terminé');
       return result;
     } catch (error) {
       this.logger.error({ ...context(), err: error }, 'Job en échec');

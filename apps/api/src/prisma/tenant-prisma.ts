@@ -7,7 +7,8 @@ import { scopeToTenant, TENANT_SCOPED_MODELS } from './tenant-isolation.js';
  * `@Inject(TENANT_PRISMA) private readonly prisma: TenantPrisma`
  *
  * PrismaService (non filtré) reste réservé aux cas sans tenant connu à l'avance :
- * inscription, connexion, refresh, healthcheck, seed.
+ * inscription, connexion, refresh, healthcheck, seed, et jobs transverses à tous les tenants
+ * (clôture automatique des tickets).
  */
 export const TENANT_PRISMA = Symbol('TENANT_PRISMA');
 
