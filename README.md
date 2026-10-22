@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/KyNaOo/deskflow/actions/workflows/ci.yml/badge.svg)](https://github.com/KyNaOo/deskflow/actions/workflows/ci.yml)
 
-Help desk SaaS multi-tenant avec assistant IA : tickets, chat temps réel entre clients et agents, suggestions de réponse basées sur la base de connaissances de chaque organisation (RAG).
+Help desk SaaS multi-tenant : chaque organisation reçoit les demandes de ses clients depuis un portail, et ses agents les traitent en temps réel (conversation, notes internes, pièces jointes, statuts, assignation).
 
-> 🚧 Projet en cours de construction — Jalons 0 (socle), 1 (authentification et multi-tenant), 2 (tickets et messages), 3 (temps réel et pièces jointes) et 4 (traitements asynchrones) terminés, prochaine étape : assistant IA (RAG).
+> 🚧 Projet en cours de construction — Jalons 0 (socle), 1 (authentification et multi-tenant), 2 (tickets et messages), 3 (temps réel et pièces jointes) et 4 (traitements asynchrones) terminés, prochaine étape : analytics et déploiement.
 
-**Stack :** TypeScript · NestJS · Next.js · PostgreSQL + pgvector · Redis · BullMQ · Socket.io · Docker · Turborepo
+**Stack :** TypeScript · NestJS · Next.js · PostgreSQL · Redis · BullMQ · Socket.io · Docker · Turborepo
 
 ---
 
@@ -57,7 +57,7 @@ Le seed crée aussi 50 tickets de démonstration (statuts, priorités et assigna
 | `web` | http://localhost:3000 | Front Next.js |
 | `api` | http://localhost:3001 | API NestJS — état de santé (base + Redis) : http://localhost:3001/health |
 | `worker` | — | Exécute les jobs en arrière-plan (même code que l'api, sans serveur HTTP) : `docker compose logs -f worker` |
-| `postgres` | `localhost:5432` | PostgreSQL 18 + pgvector (user / mdp / base : `deskflow`) |
+| `postgres` | `localhost:5432` | PostgreSQL 18 (user / mdp / base : `deskflow`) |
 | `redis` | `localhost:6379` | Pub/sub du temps réel entre instances, files BullMQ |
 | `s3` | http://localhost:8333 | API S3 (SeaweedFS) — un `AccessDenied` dans le navigateur est **normal** : l'API exige des requêtes signées |
 | `s3` (admin) | http://localhost:23646 | Interface web de SeaweedFS (buckets, fichiers) |
@@ -177,8 +177,8 @@ deskflow/
 
 - **Tout dockerisé** : un nouveau développeur (ou la CI) n'a besoin que de Docker ; les versions de Node et pnpm sont figées dans l'image.
 - **pnpm workspaces + Turborepo** : types partagés entre front et back, tâches mises en cache.
-- **PostgreSQL + pgvector** plutôt qu'une base vectorielle dédiée : relationnel et embeddings dans la même base, les mêmes transactions et la même isolation par tenant.
-- **Prisma** : schéma unique, migrations SQL versionnées et client entièrement typé. Tables et colonnes en `snake_case` (`@map`) pour garder un SQL brut lisible là où Prisma ne suffit pas (recherche vectorielle, plein texte, analytics).
+- **PostgreSQL** : relationnel et transactions pour les règles métier (numérotation par tenant, transitions conditionnelles), et recherche plein texte intégrée, sans moteur de recherche à faire tourner à côté.
+- **Prisma** : schéma unique, migrations SQL versionnées et client entièrement typé. Tables et colonnes en `snake_case` (`@map`) pour garder un SQL brut lisible là où Prisma ne suffit pas (recherche plein texte, analytics).
 - **Isolation multi-tenant automatique** : le `tenantId` vient toujours du JWT, jamais de la requête. `JwtAuthGuard` le dépose dans un contexte par requête (`nestjs-cls`, basé sur `AsyncLocalStorage`) et une extension Prisma l'ajoute à chaque requête sur les modèles concernés. Le code métier n'écrit jamais `where: { tenantId }` : il ne peut donc pas l'oublier. Une ressource d'un autre tenant renvoie **404** (et non 403, pour ne pas confirmer qu'elle existe), et une requête faite hors contexte tenant échoue au lieu de tout lire.
 - **Invitations à usage unique** : un admin invite un agent par e-mail (`POST /users/invite`). Comme le refresh token, le jeton est aléatoire et seule son empreinte SHA-256 est stockée. Il expire au bout de 48 h et son acceptation (`POST /auth/accept-invitation`) est conditionnelle, donc deux requêtes simultanées ne peuvent pas créer deux comptes. L'e-mail est envoyé par le worker (voir [Pourquoi l'envoi d'e-mail passe par une file](#pourquoi-lenvoi-de-mail-passe-par-une-file)) ; en dev, il arrive dans Mailpit.
 - **Session côté front** : les jetons restent dans des cookies `httpOnly`, que le JavaScript ne lit jamais. Le navigateur appelle l'API directement (CORS limité à `WEB_URL`, avec `credentials`). Les Server Components appellent l'API par le réseau Docker en transmettant les cookies de la requête. Sur un 401, le client renouvelle la session puis rejoue la requête une seule fois. Les requêtes qui reçoivent un 401 en même temps attendent **le même** refresh : deux refresh simultanés présenteraient le même jeton, ce que l'API traite comme un vol. Quand le cookie d'accès a expiré au moment de charger une page, `proxy.ts` redirige vers `/refresh`, qui renouvelle la session dans le navigateur (le refresh token n'est envoyé qu'aux routes `/auth` de l'API) puis renvoie vers la page demandée.
@@ -186,7 +186,7 @@ deskflow/
 - **Liste des tickets : pagination par curseur** plutôt que par `OFFSET`. Le curseur (opaque, en base64url) contient la position du dernier ticket vu (`updatedAt`, `id`) : la page suivante reprend juste après, sans que PostgreSQL relise les pages précédentes, et un ticket créé entre deux pages ne décale pas la liste. L'`id` départage les tickets de même date. Un index `(tenant_id, updated_at DESC, id DESC)` sert cet ordre directement (vérifié avec `EXPLAIN` sur 20 000 tickets).
 - **Recherche plein texte** PostgreSQL plutôt qu'un moteur dédié. Une colonne `tsvector` est **générée** par la base à partir du sujet, donc jamais désynchronisée, et indexée en GIN. Elle utilise une configuration « français sans accents » : racinisation française (« impressions » trouve « impression ») et accents ignorés (« reseau » trouve « réseau »). Prisma ne sachant pas filtrer ce type, la recherche est la seule requête en SQL brut : paramétrée (aucune concaténation de la saisie), avec un filtre tenant écrit explicitement et couvert par un test d'isolation.
 - **Machine à états des statuts** : les transitions autorisées (`OPEN → PENDING → RESOLVED → CLOSED`, réouverture possible, `CLOSED` définitif) sont définies dans une seule table, dans `packages/shared`. L'API la fait respecter (409 sinon), et le front s'en servira pour ne proposer que les transitions possibles. Elle est testée sur toutes les paires de statuts. Le changement de statut est **conditionnel au statut lu** (`UPDATE … WHERE status = <lu>`) : si deux agents agissent en même temps, un seul l'emporte et l'autre reçoit 409, au lieu d'une transition validée sur une valeur périmée.
-- **Messages et notes internes** : une note interne n'est jamais lue par un client, parce que le filtre est **dans la requête** (`isInternalNote = false`), pas appliqué après coup par le front. Les messages n'ont pas de `tenantId` : on y accède toujours à travers leur ticket, déjà filtré par tenant et par participant. Un message fait évoluer le ticket : la réponse d'un agent le passe en attente du client (`PENDING`) et pose `firstResponseAt` (indicateur du Jalon 6), celle du client le rouvre (`OPEN`). Ces transitions sont des mises à jour conditionnelles (`WHERE status IN (…)`), donc elles n'échouent jamais en cas d'action simultanée, et respectent la machine à états (vérifié par un test).
+- **Messages et notes internes** : une note interne n'est jamais lue par un client, parce que le filtre est **dans la requête** (`isInternalNote = false`), pas appliqué après coup par le front. Les messages n'ont pas de `tenantId` : on y accède toujours à travers leur ticket, déjà filtré par tenant et par participant. Un message fait évoluer le ticket : la réponse d'un agent le passe en attente du client (`PENDING`) et pose `firstResponseAt` (indicateur du Jalon 5), celle du client le rouvre (`OPEN`). Ces transitions sont des mises à jour conditionnelles (`WHERE status IN (…)`), donc elles n'échouent jamais en cas d'action simultanée, et respectent la machine à états (vérifié par un test).
 - **Validation partagée** : les règles de validation (longueurs, formats, slugs réservés…) sont des schémas zod de `packages/shared`, écrits **une seule fois**. Le front les utilise dans ses formulaires (react-hook-form) et l'API pour valider les requêtes : une petite `ZodValidationPipe` globale et des DTO créés par `createZodDto(schema)`, ce qui laisse les contrôleurs écrire `@Body() dto: LoginDto`. Une erreur affichée sous un champ est donc exactement celle que l'API renverrait.
 - **Erreurs et logs** : toutes les erreurs sortent au même format (`{ statusCode, error, message, requestId }`), grâce à un filtre global. Une erreur inattendue renvoie un 500 générique : le détail ne quitte jamais le serveur. Les logs sont structurés en JSON avec `nestjs-pino`, une ligne par requête, avec le même `requestId` que la réponse et l'en-tête `X-Request-Id`. Les cookies et en-têtes d'authentification sont masqués. En dev, `pino-pretty` les rend lisibles : `docker compose logs -f api`.
 - **Liste des tickets côté front** : Server Component. Les tickets arrivent avec le HTML, sans écran de chargement ni appel API depuis le navigateur. Les **filtres vivent dans l'URL** (`/acme/tickets?status=OPEN&q=panne`) : une vue filtrée se partage, se met en favori et survit au rechargement. Le seul composant client est le formulaire de filtres, qui ne charge rien lui-même : il réécrit l'URL (`router.replace`, recherche avec *debounce*), et le Server Component relit la liste. L'URL est lue avec les mêmes schémas zod que l'API ; une valeur invalide est ignorée plutôt que de casser la page.
@@ -277,7 +277,7 @@ Un ticket résolu attend une éventuelle réponse du client, qui le rouvrirait. 
 
 - **Planification** : chaque worker déclare au démarrage un planning BullMQ (`upsertJobScheduler`, toutes les heures à `hh:00`), **sous un identifiant fixe**. Redis n'en garde qu'un : avec deux workers, il y a un seul planning et un seul job par créneau, exécuté par l'un des deux. Un créneau manqué (worker arrêté) est rattrapé au suivant, puisque le job traite tout ce qui a expiré.
 - **Requête transverse** : le job traite **tous les tenants** à la fois et n'agit pour le compte d'aucun utilisateur. Avec le nettoyage des pièces jointes et le seed, c'est le seul code métier qui utilise le client Prisma non filtré, explicitement et avec un commentaire qui le justifie.
-- **Mise à jour conditionnelle** : la condition `status = RESOLVED AND resolved_at < now() - 7 jours` est répétée **dans l'`UPDATE`** lui-même. Un ticket rouvert par le client entre la lecture et l'écriture n'est donc pas clos. La transition `RESOLVED → CLOSED` passe par la machine à états partagée, et `resolvedAt` est conservé (indicateur du délai de résolution, Jalon 6).
+- **Mise à jour conditionnelle** : la condition `status = RESOLVED AND resolved_at < now() - 7 jours` est répétée **dans l'`UPDATE`** lui-même. Un ticket rouvert par le client entre la lecture et l'écriture n'est donc pas clos. La transition `RESOLVED → CLOSED` passe par la machine à états partagée, et `resolvedAt` est conservé (indicateur du délai de résolution, Jalon 5).
 - **Par lots** de 500 tickets : chaque transaction reste courte, même après une longue interruption.
 - **Temps réel depuis le worker** : le worker n'a pas de serveur Socket.io. Il publie `ticket.updated` dans Redis avec `@socket.io/redis-emitter`, sur le canal de l'adapter des instances de l'API, qui le relaient aux navigateurs des rooms visées (agents du tenant, participants du ticket). Un agent ou un client qui a le ticket ouvert le voit passer en « Clos » sans recharger.
 - **Synthèse** : la ligne de log du job indique le nombre de tickets clos (`"result":{"closed":3}`).
@@ -316,7 +316,7 @@ Une pièce jointe est enregistrée au moment où l'API signe son envoi, avant qu
 ## Feuille de route
 
 - [x] Jalon 0 — Socle : monorepo, Docker Compose, apps api / web
-- [x] Jalon 0 — Prisma : schéma Tenant / User, première migration (+ pgvector), seed
+- [x] Jalon 0 — Prisma : schéma Tenant / User, première migration, seed
 - [x] Jalon 0 — Config typée et validée au démarrage (`@nestjs/config` + zod)
 - [x] Jalon 0 — Endpoint `/health` (`@nestjs/terminus`) + healthcheck Docker
 - [x] Jalon 0 — CI GitHub Actions : lint → typecheck → tests → build → tests e2e sur un vrai Postgres
@@ -324,5 +324,4 @@ Une pièce jointe est enregistrée au moment où l'API signe son envoi, avant qu
 - [x] Jalon 2 — Tickets et messages : numérotation par tenant, machine à états, liste (filtres, recherche plein texte, curseur), messages et notes internes, erreurs et logs, espace agents et portail client
 - [x] Jalon 3 — Temps réel et pièces jointes : gateway Socket.io authentifiée, adapter Redis (plusieurs instances), cache TanStack Query et optimistic update, indicateur de saisie, pièces jointes par URL présignée
 - [x] Jalon 4 — Traitements asynchrones : process worker (BullMQ), file d'e-mails avec retries, clôture automatique des tickets résolus, nettoyage des pièces jointes orphelines
-- [ ] Jalon 5 — Assistant IA (RAG)
-- [ ] Jalon 6 — Analytics, finition, déploiement
+- [ ] Jalon 5 — Analytics, finition, déploiement

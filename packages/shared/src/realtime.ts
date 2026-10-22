@@ -23,7 +23,6 @@ export interface Message {
   id: string;
   body: string;
   isInternalNote: boolean;
-  aiGenerated: boolean;
   createdAt: string;
   author: { id: string; name: string; role: Role };
   attachments: Attachment[];

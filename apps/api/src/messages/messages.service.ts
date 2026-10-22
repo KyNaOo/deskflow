@@ -17,7 +17,6 @@ const messageSelect = {
   id: true,
   body: true,
   isInternalNote: true,
-  aiGenerated: true,
   createdAt: true,
   author: { select: { id: true, name: true, role: true } },
   attachments: { select: attachmentSelect, orderBy: { createdAt: 'asc' } },
@@ -107,7 +106,7 @@ export class MessagesService {
       }
 
       if (!isCustomer && !isInternalNote) {
-        // Délai de première réponse (indicateur du Jalon 6) : posé une seule fois
+        // Délai de première réponse (indicateur du Jalon 5) : posé une seule fois
         await tx.ticket.updateMany({
           where: { id: ticket.id, firstResponseAt: null },
           data: { firstResponseAt: now },

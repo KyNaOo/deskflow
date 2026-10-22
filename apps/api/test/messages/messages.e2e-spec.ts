@@ -222,7 +222,8 @@ describe('Messages et notes internes — /tickets/:number/messages (e2e)', () =>
 
     it.each([
       ['vide', { body: '   ' }],
-      ['avec un champ inconnu', { body: 'Bonjour', aiGenerated: true }],
+      // L'auteur vient du JWT : un champ qui tenterait de le choisir est refusé, pas ignoré
+      ['avec un champ inconnu', { body: 'Bonjour', authorId: 'un-autre-utilisateur' }],
     ])('refuse un message %s (400)', async (_case, body) => {
       const number = await openTicket();
 

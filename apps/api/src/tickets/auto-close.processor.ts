@@ -51,7 +51,7 @@ export class AutoCloseProcessor
   }
 
   protected async handle(): Promise<AutoCloseResult> {
-    // RESOLVED → CLOSED autorisé par la machine à états ; resolvedAt est conservé (Jalon 6)
+    // RESOLVED → CLOSED autorisé par la machine à états ; resolvedAt est conservé (Jalon 5)
     const data = transitionData(TicketStatus.RESOLVED, TicketStatus.CLOSED);
     const expired = { status: TicketStatus.RESOLVED, resolvedAt: { lt: autoCloseCutoff(new Date()) } };
     let closed = 0;

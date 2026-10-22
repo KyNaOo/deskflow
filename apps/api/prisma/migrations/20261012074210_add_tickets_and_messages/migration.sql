@@ -32,7 +32,6 @@ CREATE TABLE "messages" (
     "author_id" UUID NOT NULL,
     "body" TEXT NOT NULL,
     "is_internal_note" BOOLEAN NOT NULL DEFAULT false,
-    "ai_generated" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "messages_pkey" PRIMARY KEY ("id")

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Deskflow",
-  description: "Help desk multi-tenant avec assistant IA",
+  description: "Help desk multi-tenant : tickets et chat temps réel entre clients et agents",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

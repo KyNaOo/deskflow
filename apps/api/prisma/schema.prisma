@@ -3,7 +3,7 @@
 //
 // Convention : modèles et champs en camelCase côté TypeScript, tables et colonnes
 // en snake_case côté PostgreSQL (@map / @@map) pour un SQL brut lisible
-// (recherche vectorielle, plein texte, analytics).
+// (recherche plein texte, analytics).
 
 generator client {
   provider               = "prisma-client"
@@ -157,7 +157,6 @@ model Message {
   authorId       String   @map("author_id") @db.Uuid
   body           String
   isInternalNote Boolean  @default(false) @map("is_internal_note")
-  aiGenerated    Boolean  @default(false) @map("ai_generated")
   createdAt      DateTime @default(now()) @map("created_at")
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)

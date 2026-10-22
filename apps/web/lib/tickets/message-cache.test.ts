@@ -5,7 +5,7 @@ import { addMessage, confirmMessage, optimisticMessage, removeMessage } from "./
 const author: Message["author"] = { id: "agent-1", name: "Alice", role: "AGENT" };
 
 function message(id: string, body = `Message ${id}`): Message {
-  return { id, body, isInternalNote: false, aiGenerated: false, createdAt: "2026-10-14T10:00:00.000Z", author, attachments: [] };
+  return { id, body, isInternalNote: false, createdAt: "2026-10-14T10:00:00.000Z", author, attachments: [] };
 }
 
 describe("optimisticMessage", () => {

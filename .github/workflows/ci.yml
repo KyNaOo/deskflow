@@ -12,7 +12,7 @@ jobs:
     # Base et Redis réels pour les tests e2e de l'api (mêmes images qu'en local)
     services:
       postgres:
-        image: pgvector/pgvector:pg18
+        image: postgres:18
         env:
           POSTGRES_USER: deskflow
           POSTGRES_PASSWORD: deskflow

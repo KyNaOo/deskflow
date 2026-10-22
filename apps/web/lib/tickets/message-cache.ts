@@ -16,7 +16,6 @@ export function optimisticMessage(
     id: `optimistic-${optimisticCount}`,
     body: input.body,
     isInternalNote: input.isInternalNote ?? false,
-    aiGenerated: false,
     createdAt: new Date().toISOString(),
     author,
     attachments,

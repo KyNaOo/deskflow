@@ -1,6 +1,3 @@
--- Extension pgvector : stockage et recherche des embeddings (Jalon 5)
-CREATE EXTENSION IF NOT EXISTS vector;
-
 -- CreateEnum
 CREATE TYPE "Role" AS ENUM ('ADMIN', 'AGENT', 'CUSTOMER');
 
