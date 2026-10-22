@@ -22,11 +22,12 @@ export default async function TenantLayout({ children, params }: LayoutProps<"/[
   return (
     <div className="flex flex-1 flex-col">
       <header className="border-b">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-6">
+        {/* Passe à la ligne sur mobile plutôt que de déborder de l'écran */}
+        <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-2">
           <Link href={`/${tenant}/tickets`} className="font-semibold">
             {profile.tenant.name}
           </Link>
-          <MainNav tenant={tenant} />
+          <MainNav tenant={tenant} role={profile.role} />
           <div className="ml-auto flex items-center gap-4">
             <span className="text-sm text-muted-foreground">{profile.name}</span>
             <LogoutButton />

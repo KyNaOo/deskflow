@@ -158,7 +158,8 @@ deskflow/
 │   └── web/              # Next.js App Router + Tailwind + shadcn/ui (Vitest, ESLint)
 │       ├── app/(auth)/   # connexion, inscription, acceptation d'invitation
 │       ├── app/portal/[tenant]/ # portail client : inscription, mes demandes, conversation
-│       ├── app/[tenant]/ # espace agents : liste (filtres dans l'URL), détail, nouveau ticket
+│       ├── app/[tenant]/ # espace agents : liste (filtres dans l'URL), détail, nouveau ticket ; tableau de bord des admins
+│       ├── lib/analytics/ # période du tableau de bord (URL), formatage des délais et des jours
 │       ├── lib/api/      # clients API navigateur (refresh transparent) et serveur
 │       ├── lib/realtime/ # socket unique de l'onglet, hook useTicketSocket
 │       ├── lib/tickets/  # cache TanStack Query d'un ticket, mises à jour de la conversation
@@ -206,6 +207,11 @@ deskflow/
   - un « jour » est celui de **Paris** : les dates sont stockées en UTC, et un ticket ouvert à 0 h 30 le 29 mars est compté le 29, même pendant le changement d'heure (un test le vérifie).
 
   La période (30 derniers jours par défaut, 90 au plus) est validée par un schéma zod partagé. Ces agrégats sont écrits en SQL brut paramétré : comme pour la recherche, le filtre `tenant_id` y est explicite, et un test e2e échoue s'il est retiré.
+- **Tableau de bord des admins** (`/acme/dashboard`) : quatre chiffres clés (tickets créés, sans réponse, délais médians de première réponse et de résolution) et deux graphiques **Recharts** (tickets créés par jour, répartition par statut).
+  - **Server Component** : la page lit `/analytics/overview` côté serveur, et les chiffres arrivent avec le HTML. Les deux graphiques sont les **seuls composants client** : Recharts mesure son conteneur et dessine dans le navigateur. Ils reçoivent leurs données en props et ne font aucun appel.
+  - La **période vit dans l'URL** (`?period=7|30|90`), comme les filtres des tickets. Le sélecteur n'est fait que de liens, sans JavaScript : chaque choix est une navigation relue par le serveur. Une valeur invalide vaut 30 jours.
+  - Réservé aux admins : le lien n'apparaît que pour eux, et un agent qui ouvre l'URL est renvoyé vers les tickets (l'API répondrait 403).
+  - **Lisible par tous** : une seule couleur, dont le contraste a été vérifié dans les deux thèmes, car la couleur ne distingue rien (les statuts sont écrits sur l'axe). Chaque graphique a un titre, une phrase de résumé, et un tableau « Voir les données » pour le clavier et les lecteurs d'écran. Durées en « 2 h 15 min », jours à l'heure de Paris.
 - **Temps réel (Socket.io)** : la gateway partage le port de l'API. L'authentification se fait **au handshake** : le navigateur envoie le cookie `httpOnly` de l'access token (`withCredentials`), vérifié par le même code que `JwtAuthGuard` ; sans jeton valide, la connexion est refusée. Chaque événement part vers une **room**, jamais vers tous les sockets :
   - `tenant:<id>:agents` (agents et admins, rejointe à la connexion) reçoit `ticket.created` et `ticket.updated` ;
   - `ticket:<id>` (client et agents qui suivent le ticket) reçoit `message.created` et `ticket.updated` ;
