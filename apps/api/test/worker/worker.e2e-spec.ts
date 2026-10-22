@@ -21,8 +21,11 @@ interface TestJobData {
 
 /** Jobs exécutés, dans l'ordre : pour vérifier qu'aucun ne l'est deux fois. */
 const executedJobIds: string[] = [];
-/** Retient le job `slow` jusqu'à ce que le test le libère. */
-let releaseSlowJob = () => {};
+/**
+ * Libère le job `slow`, retenu jusque-là. Défini seulement quand le processor l'a commencé :
+ * l'état `active` dans Redis le précède, l'attendre seul ne suffit pas.
+ */
+let releaseSlowJob: (() => void) | undefined;
 
 // Processor propre au test : lit les utilisateurs dans le contexte du tenant du job
 @Processor(TEST_QUEUE)
@@ -84,6 +87,7 @@ describe('Worker BullMQ (e2e)', () => {
   afterEach(async () => {
     await Promise.all(workers.splice(0).map((worker) => worker.close()));
     executedJobIds.length = 0;
+    releaseSlowJob = undefined;
   });
 
   afterAll(async () => {
@@ -117,10 +121,10 @@ describe('Worker BullMQ (e2e)', () => {
   it('à l’arrêt, le worker termine le job en cours avant de fermer', async () => {
     const worker = await startWorker();
     const job = await queue.add('slow', { tenantId: tenantA.tenantId });
-    await waitForState(job.id!, 'active');
+    await vi.waitFor(() => expect(releaseSlowJob).toBeDefined(), { timeout: 5_000, interval: 20 });
 
     const closing = worker.close();
-    releaseSlowJob();
+    releaseSlowJob!();
     await closing;
     workers.length = 0;
 
