@@ -138,6 +138,7 @@ deskflow/
 │   ├── api/              # NestJS (Vitest, oxlint)
 │   │   ├── prisma/       # schema.prisma, migrations SQL, seed
 │   │   └── src/
+│   │       ├── analytics/ # indicateurs des admins : délais médians, tickets par jour et par statut (SQL)
 │   │       ├── attachments/ # pièces jointes : signature de l'envoi, rattachement aux messages, téléchargement contrôlé, nettoyage des orphelines
 │   │       ├── auth/     # inscription, connexion, JWT + refresh tokens, guards, acceptation d'invitation
 │   │       ├── mail/     # envoi SMTP (Nodemailer → Mailpit en dev), utilisé par le worker seulement
@@ -199,6 +200,12 @@ deskflow/
 - **« Alice est en train d'écrire… »** : pendant qu'un agent tape, son navigateur envoie `agent.typing`, au plus une fois toutes les 2 s. L'API le relaie aux autres participants du ticket, pas à l'émetteur, avec le nom de l'agent, lu une fois au handshake car le JWT ne le contient pas. Le relais est refusé pour un client et pour un agent qui n'a pas rejoint le ticket (la room prouve que `ticket.join` a vérifié l'accès). Pendant la saisie d'une **note interne**, il ne part que vers la room des agents : le client ne doit pas deviner qu'on écrit sur lui. L'indicateur disparaît 5 s après le dernier signal, ou dès que le message arrive. Il est annoncé aux lecteurs d'écran (`aria-live="polite"`). Les règles d'expiration, de limitation et de libellé sont des fonctions pures, testées unitairement.
 - **Liste des tickets agents** : un `ticket.created` ou `ticket.updated` affiche un bandeau « Des tickets ont été créés ou modifiés » avec un bouton **Actualiser**. Réinsérer le ticket dans une liste filtrée et paginée par curseur côté serveur serait fragile : c'est le serveur qui sait où il va.
 - **Portail client** : chaque organisation a un portail public (`/portal/acme`) où ses clients créent eux-mêmes leur compte (`POST /auth/register-customer`, toujours avec le rôle `CUSTOMER` : un rôle envoyé dans la requête est refusé), ouvrent des demandes et suivent la conversation. Il n'y a pas d'API dédiée : les mêmes routes que les agents (`GET /tickets`, messages…) renvoient au client ses seuls tickets, sans les notes internes. Après la connexion, chacun est redirigé selon son rôle (client → portail, agent → son espace), et une session expirée sur le portail renvoie vers la connexion du portail.
+- **Indicateurs** (`GET /analytics/overview?from=&to=`, admins uniquement) : sur les tickets créés dans la période, le nombre de tickets, ceux encore sans réponse, et les **délais médians** de première réponse et de résolution ; plus les tickets créés **par jour** et la répartition actuelle par statut. Tout est calculé par PostgreSQL, sans charger un seul ticket en mémoire :
+  - la **médiane** (`percentile_cont(0.5)`) plutôt que la moyenne, qu'un seul ticket oublié trois semaines ferait exploser ;
+  - les jours sans ticket apparaissent à 0 grâce à `generate_series`, au lieu de laisser des trous dans le graphique ;
+  - un « jour » est celui de **Paris** : les dates sont stockées en UTC, et un ticket ouvert à 0 h 30 le 29 mars est compté le 29, même pendant le changement d'heure (un test le vérifie).
+
+  La période (30 derniers jours par défaut, 90 au plus) est validée par un schéma zod partagé. Ces agrégats sont écrits en SQL brut paramétré : comme pour la recherche, le filtre `tenant_id` y est explicite, et un test e2e échoue s'il est retiré.
 - **Temps réel (Socket.io)** : la gateway partage le port de l'API. L'authentification se fait **au handshake** : le navigateur envoie le cookie `httpOnly` de l'access token (`withCredentials`), vérifié par le même code que `JwtAuthGuard` ; sans jeton valide, la connexion est refusée. Chaque événement part vers une **room**, jamais vers tous les sockets :
   - `tenant:<id>:agents` (agents et admins, rejointe à la connexion) reçoit `ticket.created` et `ticket.updated` ;
   - `ticket:<id>` (client et agents qui suivent le ticket) reçoit `message.created` et `ticket.updated` ;

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { MAX_ATTACHMENTS_PER_MESSAGE } from './attachments.js';
-import { requiredText } from './fields.js';
+import { requiredText, urlParam } from './fields.js';
 
 // Mêmes valeurs que les enums Prisma de l'api (prisma/schema.prisma)
 export const TICKET_STATUSES = ['OPEN', 'PENDING', 'RESOLVED', 'CLOSED'] as const;
@@ -39,10 +39,6 @@ export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;
 
 export const TICKET_PAGE_SIZE = 20;
 export const MAX_TICKET_PAGE_SIZE = 50;
-
-/** Paramètre d'URL facultatif : une valeur vide (`?status=`, filtre « Tous ») vaut « pas de filtre ». */
-const urlParam = <T extends z.ZodType>(schema: T) =>
-  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
 
 /** Filtres de la liste des tickets (`GET /tickets?…`), lus aussi depuis l'URL par le front. */
 export const listTicketsQuerySchema = z.strictObject({

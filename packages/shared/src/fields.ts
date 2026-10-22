@@ -9,6 +9,10 @@ export const email = z.string().trim().toLowerCase().pipe(z.email('Adresse e-mai
 export const requiredText = (max: number) =>
   z.string().trim().min(1, 'Champ obligatoire').max(max, `${max} caractères maximum`);
 
+/** Paramètre d'URL facultatif : une valeur vide (`?status=`, filtre « Tous ») vaut « pas de filtre ». */
+export const urlParam = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 // Borne haute : évite de faire hasher par argon2 des chaînes énormes (déni de service)
 export const newPassword = z
   .string()

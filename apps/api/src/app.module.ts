@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
+import { AnalyticsModule } from './analytics/analytics.module.js';
 import { AttachmentsModule } from './attachments/attachments.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module.js';
     TicketsModule,
     MessagesModule,
     AttachmentsModule,
+    AnalyticsModule,
   ],
   providers: [
     // Déclaré ici plutôt que dans main.ts pour s'appliquer aussi aux tests e2e
