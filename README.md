@@ -8,6 +8,8 @@ Help desk SaaS multi-tenant : chaque organisation reçoit les demandes de ses cl
 
 **Stack :** TypeScript · NestJS · Next.js · PostgreSQL · Redis · BullMQ · Socket.io · Docker · Turborepo
 
+![Tableau de bord des admins : chiffres clés, tickets créés par jour et répartition par statut](docs/screenshots/dashboard.png)
+
 ---
 
 ## Prérequis
@@ -37,18 +39,24 @@ C'est tout. Le code est monté dans les conteneurs : toute modification recharge
 
 ### Comptes de démonstration
 
-Créés par `bin/pnpm db:seed` dans l'organisation **Acme Corp** (`acme`), mot de passe `password` :
+Créés par `bin/pnpm db:seed`, tous avec le mot de passe **`password`** :
 
-| Rôle | E-mail |
-|---|---|
-| Admin | `admin@acme.test` |
-| Agent | `agent@acme.test` |
-| Client | `client@acme.test` |
+| Organisation | Rôle | E-mail | Pour essayer |
+|---|---|---|---|
+| Acme Corp (`acme`) | Admin | `admin@acme.test` | Tableau de bord (indicateurs, graphiques), invitations, et tout ce que fait un agent |
+| | Agent | `agent@acme.test` | File des tickets (filtres, recherche, pagination), réponses et notes internes en temps réel, assignation, statuts |
+| | Client | `client@acme.test` | Portail : ouvrir une demande, suivre la conversation, joindre un fichier |
+| Globex (`globex`) | Admin | `admin@globex.test` | Une seconde organisation, isolée de la première |
+| | Agent | `agent@globex.test` | |
+| | Client | `client@globex.test` | |
 
-- **Espace agents** : http://localhost:3000/login (organisation `acme`, compte admin ou agent)
-- **Portail client** : http://localhost:3000/portal/acme (compte client, ou créez-en un)
+- **Espace agents** : http://localhost:3000/login (saisir l'organisation : `acme` ou `globex`)
+- **Portail client** : http://localhost:3000/portal/acme et http://localhost:3000/portal/globex
 
-Le seed crée aussi 50 tickets de démonstration (statuts, priorités et assignations variés) ouverts par le client, avec des réponses d'agent et une note interne sur le ticket n° 3 : de quoi essayer filtres, recherche, pagination et conversations.
+**Ce que contient le seed** : 60 jours d'historique chez Acme (environ 330 tickets, presque 1 000 messages, trois agents, plusieurs clients) et 30 jours chez Globex. Le volume est plus fort en semaine, les délais de réponse et de résolution sont variés, et les statuts découlent des dates : les tickets récents sont ouverts ou en attente, les plus anciens sont clos, comme le ferait le job de clôture automatique. Quelques notes internes et relances de clients complètent les conversations.
+
+- **Isolation** : `marie@exemple.test` est cliente des deux organisations, avec **un compte distinct dans chacune**. Connectée au portail d'Acme, elle ne voit que ses demandes chez Acme.
+- **Déterministe et idempotent** : les données sont générées par une fonction pure (`prisma/demo-data.ts`) à partir d'une graine fixe, testée unitairement (statuts cohérents avec les dates, conversations chronologiques, plus de tickets en semaine). Relancer le seed ne duplique rien : les comptes manquants sont créés, et l'historique ne l'est que pour une organisation sans ticket, en une seule transaction. Pour repartir d'un historique frais (dates recalées sur aujourd'hui) : `bin/pnpm db:reset` puis `bin/pnpm db:seed`.
 
 ## Services
 
@@ -111,8 +119,8 @@ bin/pnpm --filter web test
 # Base de données (Prisma)
 bin/pnpm db:migrate --name add_tickets   # après modif du schéma : crée + applique une migration
 bin/pnpm db:deploy                       # applique les migrations existantes (CI, prod, après un pull)
-bin/pnpm db:seed                         # (ré)insère les données de démo — idempotent
-bin/pnpm db:reset                        # ⚠️ vide la base, rejoue les migrations et le seed
+bin/pnpm db:seed                         # crée les données de démo manquantes — idempotent
+bin/pnpm db:reset --force                # ⚠️ vide la base et rejoue les migrations (puis db:seed)
 bin/pnpm db:generate                     # régénère le client typé (automatique après install)
 docker compose exec postgres psql -U deskflow   # console SQL
 
@@ -136,7 +144,7 @@ docker compose up -d --scale worker=2  # deux workers : les jobs sont répartis 
 deskflow/
 ├── apps/
 │   ├── api/              # NestJS (Vitest, oxlint)
-│   │   ├── prisma/       # schema.prisma, migrations SQL, seed
+│   │   ├── prisma/       # schema.prisma, migrations SQL, seed (demo-data.ts génère, demo-seed.ts écrit)
 │   │   └── src/
 │   │       ├── analytics/ # indicateurs des admins : délais médians, tickets par jour et par statut (SQL)
 │   │       ├── attachments/ # pièces jointes : signature de l'envoi, rattachement aux messages, téléchargement contrôlé, nettoyage des orphelines
@@ -294,8 +302,6 @@ Un ticket résolu attend une éventuelle réponse du client, qui le rouvrirait. 
 - **Par lots** de 500 tickets : chaque transaction reste courte, même après une longue interruption.
 - **Temps réel depuis le worker** : le worker n'a pas de serveur Socket.io. Il publie `ticket.updated` dans Redis avec `@socket.io/redis-emitter`, sur le canal de l'adapter des instances de l'API, qui le relaient aux navigateurs des rooms visées (agents du tenant, participants du ticket). Un agent ou un client qui a le ticket ouvert le voit passer en « Clos » sans recharger.
 - **Synthèse** : la ligne de log du job indique le nombre de tickets clos (`"result":{"closed":3}`).
-
-> En dev, les tests e2e utilisent la même base : leur exécution clôt aussi les tickets du seed résolus depuis plus de 7 jours, comme le ferait le worker au créneau suivant.
 
 ### Tâche planifiée : nettoyage des pièces jointes orphelines
 
