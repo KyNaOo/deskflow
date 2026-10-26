@@ -220,6 +220,12 @@ deskflow/
   - La **période vit dans l'URL** (`?period=7|30|90`), comme les filtres des tickets. Le sélecteur n'est fait que de liens, sans JavaScript : chaque choix est une navigation relue par le serveur. Une valeur invalide vaut 30 jours.
   - Réservé aux admins : le lien n'apparaît que pour eux, et un agent qui ouvre l'URL est renvoyé vers les tickets (l'API répondrait 403).
   - **Lisible par tous** : une seule couleur, dont le contraste a été vérifié dans les deux thèmes, car la couleur ne distingue rien (les statuts sont écrits sur l'axe). Chaque graphique a un titre, une phrase de résumé, et un tableau « Voir les données » pour le clavier et les lecteurs d'écran. Durées en « 2 h 15 min », jours à l'heure de Paris.
+- **Accessibilité de base** (WCAG 2.1 AA), vérifiée plutôt que supposée :
+  - **audit axe** (règles WCAG A/AA et bonnes pratiques) sur toutes les pages, pour les trois rôles : connexion et inscription (formulaires vides compris), liste et détail des tickets, nouveau ticket, tableau de bord, portail client, page introuvable. Aucune violation ;
+  - **parcours au clavier seul** : une cliente ouvre une demande depuis le portail, un agent la trouve dans sa file et répond, sans souris. Un lien **« Aller au contenu »**, premier élément de chaque page, évite de retraverser l'en-tête ;
+  - **focus toujours visible** : un contour net de 2 px, dans la couleur du texte, remplace l'anneau gris clair des composants shadcn, presque invisible sur fond blanc ;
+  - **contrastes AA** : texte secondaire légèrement assombri (il passait sous 4,5:1 sur les fonds gris du portail), badge « Urgente » en rouge plus foncé ;
+  - **formulaires** : chaque champ a un label, chaque erreur est reliée à son champ (`aria-describedby`) et annoncée (`role="alert"`), et le focus va au premier champ invalide. Chaque page a un titre (`<title>`) et un seul `h1`.
 - **Temps réel (Socket.io)** : la gateway partage le port de l'API. L'authentification se fait **au handshake** : le navigateur envoie le cookie `httpOnly` de l'access token (`withCredentials`), vérifié par le même code que `JwtAuthGuard` ; sans jeton valide, la connexion est refusée. Chaque événement part vers une **room**, jamais vers tous les sockets :
   - `tenant:<id>:agents` (agents et admins, rejointe à la connexion) reçoit `ticket.created` et `ticket.updated` ;
   - `ticket:<id>` (client et agents qui suivent le ticket) reçoit `message.created` et `ticket.updated` ;

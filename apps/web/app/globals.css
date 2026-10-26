@@ -60,7 +60,8 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /* Plus foncé que le défaut shadcn (0.556) : contraste AA aussi sur les fonds gris (portail, messages) */
+  --muted-foreground: oklch(0.5 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -128,4 +129,13 @@
   html {
     @apply font-sans;
   }
+}
+
+/*
+ * Focus clavier net partout (WCAG 2.4.7) : l'anneau gris clair des composants shadcn est presque
+ * invisible sur fond blanc. Hors des couches Tailwind, cette règle prime sur leurs `outline-none`.
+ */
+:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
 }

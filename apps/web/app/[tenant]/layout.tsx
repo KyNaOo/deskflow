@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { LogoutButton } from "@/components/logout-button";
+import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
 import { getProfile } from "@/lib/api/profile";
 import { homePath } from "@/lib/auth/paths";
 import { MainNav } from "./main-nav";
@@ -21,6 +22,7 @@ export default async function TenantLayout({ children, params }: LayoutProps<"/[
 
   return (
     <div className="flex flex-1 flex-col">
+      <SkipLink />
       <header className="border-b">
         {/* Passe à la ligne sur mobile plutôt que de déborder de l'écran */}
         <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-2">
@@ -34,7 +36,7 @@ export default async function TenantLayout({ children, params }: LayoutProps<"/[
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
+      <main id={MAIN_CONTENT_ID} className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
     </div>
   );
 }

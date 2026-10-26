@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LogoutButton } from "@/components/logout-button";
+import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
 import { Button } from "@/components/ui/button";
 import { getOptionalProfile } from "@/lib/api/profile";
 import { serverFetch } from "@/lib/api/server";
@@ -16,6 +17,7 @@ export default async function PortalLayout({ children, params }: LayoutProps<"/p
 
   return (
     <div className="flex flex-1 flex-col bg-muted/40">
+      <SkipLink />
       <header className="border-b bg-background">
         <div className="mx-auto flex h-14 max-w-4xl items-center gap-4 px-6">
           <Link href={`/portal/${tenant}`} className="font-semibold">
@@ -40,7 +42,7 @@ export default async function PortalLayout({ children, params }: LayoutProps<"/p
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">{children}</main>
+      <main id={MAIN_CONTENT_ID} className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">{children}</main>
     </div>
   );
 }
