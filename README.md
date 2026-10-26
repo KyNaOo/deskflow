@@ -176,10 +176,13 @@ deskflow/
 │   ├── shared/           # schémas zod, types et machine à états des tickets, partagés api ↔ front
 │   └── tsconfig/         # configs TypeScript partagées (strict)
 ├── docker/
-│   └── dev.Dockerfile    # image de dev : Node 24 + pnpm
+│   ├── dev.Dockerfile    # image de dev : Node 24 + pnpm
+│   ├── api.Dockerfile    # images de prod : api et worker (même image), migrations
+│   └── web.Dockerfile    # image de prod du front (sortie standalone de Next.js)
 ├── .github/workflows/    # CI GitHub Actions
 ├── bin/                  # wrappers Docker (pnpm, sh)
-├── docker-compose.yml
+├── docker-compose.yml       # environnement de développement
+├── docker-compose.prod.yml  # images de production, lancées en local
 └── turbo.json
 ```
 
@@ -317,6 +320,36 @@ Une pièce jointe est enregistrée au moment où l'API signe son envoi, avant qu
 - **Suppression conditionnelle en base** (`message_id IS NULL`) : une pièce jointe rattachée entre la lecture et la suppression n'est pas effacée.
 - **Synthèse** dans la ligne de log du job : `"result":{"deletedFiles":12,"freedBytes":3481210}`.
 - Testé sur le vrai SeaweedFS : orpheline ancienne supprimée (objet et ligne), orpheline récente et pièce jointe rattachée conservées, objet déjà absent toléré, seconde exécution sans effet.
+
+## Images de production
+
+En développement, les conteneurs exécutent le code source en mode watch, avec toutes les dépendances de dev. Les images de production sont construites en **plusieurs étapes** (*multi-stage*) : une étape installe tout et compile, l'image finale ne garde que le résultat.
+
+| Image | Contenu | Taille (compressée) |
+|---|---|---|
+| `deskflow-api` | `dist/` compilé + dépendances de production. Lance l'API (`node dist/main.js`) ou le worker (`node dist/worker.js`) | 511 Mo (104 Mo) |
+| `deskflow-web` | serveur autonome de Next.js (`output: "standalone"`) : seuls les fichiers réellement importés | 304 Mo (76 Mo) |
+| `deskflow-migrate` | CLI Prisma et `tsx` : migrations, seed, préparation du bucket. Lancée ponctuellement | 1,2 Go (263 Mo) |
+| *dev, pour comparaison* | *Node + pnpm, code et `node_modules` montés depuis l'hôte* | *625 Mo, hors `node_modules`* |
+
+- **Dépendances de production seulement** : `pnpm deploy --prod` extrait de l'espace de travail un dossier autonome avec les seules dépendances de l'API, `@deskflow/shared` compris. Ni pnpm, ni TypeScript, ni le CLI Prisma dans l'image finale. Une part importante du reste est le client Prisma (72 Mo), qui embarque les moteurs de requêtes de toutes les bases.
+- **Alpine** : Prisma 7 n'utilise plus de moteur natif (driver adapter `pg`), et argon2 publie des binaires pour musl : l'image de base passe de 330 à 167 Mo.
+- **Non-root** : les processus tournent sous l'utilisateur `node`. Les fichiers appartiennent à root : l'application ne peut pas modifier son propre code.
+- **Cache de build** : le lockfile est copié et les paquets téléchargés (`pnpm fetch`) **avant** le code source. Modifier le code ne relance pas le téléchargement des dépendances.
+- **Migrations au déploiement**, pas au démarrage : avec plusieurs instances de l'API, chacune lancerait les migrations en même temps. Le service `migrate` les applique une fois, et l'API et le worker attendent qu'il ait terminé.
+- **`NEXT_PUBLIC_API_URL` au build** : Next.js intègre cette adresse dans le JavaScript envoyé au navigateur. L'image du front est donc propre à un environnement ; l'adresse interne (`API_URL`, appels des Server Components) reste une variable d'exécution.
+- **Différences de comportement** : `NODE_ENV=production` active les cookies `secure` (acceptés par les navigateurs sur `http://localhost`) et les logs JSON sur une ligne au lieu de `pino-pretty`.
+- **CI** : les trois images sont construites à chaque push (sans publication).
+
+Pour lancer les images de production en local (arrêter d'abord l'environnement de dev, qui utilise les mêmes ports) :
+
+```bash
+docker compose stop
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm migrate prisma db seed   # données de démo
+```
+
+Les mêmes adresses et comptes de démonstration fonctionnent. Les conteneurs et volumes sont distincts de ceux du dev (projet `deskflow-prod`).
 
 ## Dépannage
 

@@ -86,3 +86,22 @@ jobs:
 
       - name: E2E tests (api)
         run: pnpm --filter api test:e2e
+
+  # Vérifie que les images de production se construisent (sans les publier)
+  images:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build api image
+        run: docker build -f docker/api.Dockerfile -t deskflow-api .
+
+      - name: Build migrate image
+        run: docker build -f docker/api.Dockerfile --target migrate -t deskflow-migrate .
+
+      - name: Build web image
+        run: docker build -f docker/web.Dockerfile --build-arg NEXT_PUBLIC_API_URL=http://localhost:3001 -t deskflow-web .
+
+      - name: Image sizes
+        run: docker images "deskflow-*"

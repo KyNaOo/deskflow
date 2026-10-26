@@ -1,0 +1,93 @@
+# Images de production lancées en local, à l'identique de la prod :
+#   docker compose -f docker-compose.prod.yml up --build
+# Projet séparé du dev (conteneurs et volumes distincts), mais mêmes ports : arrêter le dev avant.
+
+name: deskflow-prod
+
+x-api-image: &api-image
+  build:
+    context: .
+    dockerfile: docker/api.Dockerfile
+    target: runtime
+  image: deskflow-api
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    NODE_ENV: production
+
+x-migrate-image: &migrate-image
+  build:
+    context: .
+    dockerfile: docker/api.Dockerfile
+    target: migrate
+  image: deskflow-migrate
+  env_file:
+    - path: .env
+      required: false
+
+services:
+  # Applique les migrations une seule fois, avant le démarrage de l'api et du worker.
+  # Données de démo : `docker compose -f docker-compose.prod.yml run --rm migrate prisma db seed`
+  migrate:
+    <<: *migrate-image
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  s3-setup:
+    <<: *migrate-image
+    command: ["tsx", "scripts/setup-storage.ts"]
+    depends_on:
+      s3: { condition: service_healthy }
+
+  api:
+    <<: *api-image
+    ports:
+      - "3001:3001"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      s3-setup: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  worker:
+    <<: *api-image
+    command: ["node", "dist/worker.js"]
+    # Laisse au job en cours le temps de se terminer avant l'arrêt forcé
+    stop_grace_period: 30s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    image: deskflow-web
+    environment:
+      API_URL: http://api:3001
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api: { condition: service_healthy }
+
+  postgres:
+    extends: { file: docker-compose.yml, service: postgres }
+  redis:
+    extends: { file: docker-compose.yml, service: redis }
+  s3:
+    extends: { file: docker-compose.yml, service: s3 }
+  mailpit:
+    extends: { file: docker-compose.yml, service: mailpit }
+
+volumes:
+  postgres-data:
+  redis-data:
+  s3-data:

@@ -1,9 +1,17 @@
 **/node_modules
 **/.next
 **/dist
+**/dist-worker
 **/.turbo
 **/coverage
+# Un tsbuildinfo périmé ferait croire à tsc que tout est déjà compilé : rien ne serait émis
+**/*.tsbuildinfo
+# Régénéré par `prisma generate` pendant le build
+apps/api/src/generated
 .git
+.github
+.playwright-mcp
+docs
 .env
 .env.*
 !.env.example

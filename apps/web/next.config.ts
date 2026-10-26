@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Image de production : serveur Node autonome avec uniquement les fichiers utilisés
+  output: "standalone",
 };
 
 export default nextConfig;
