@@ -30,7 +30,7 @@ import { ConfigService } from '@nestjs/config';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import type { Env } from '../config/env.js';
-import { clearAuthCookies, setAuthCookies } from './auth-cookies.js';
+import { type AuthCookieSettings, clearAuthCookies, setAuthCookies } from './auth-cookies.js';
 import { REFRESH_TOKEN_COOKIE } from './auth.constants.js';
 import { AuthService } from './auth.service.js';
 import type { AuthenticatedUser } from './authenticated-user.js';
@@ -40,14 +40,17 @@ import { TokenService } from './token.service.js';
 
 @Controller('auth')
 export class AuthController {
-  private readonly secureCookies: boolean;
+  private readonly cookieSettings: AuthCookieSettings;
 
   constructor(
     private readonly authService: AuthService,
     private readonly tokenService: TokenService,
     config: ConfigService<Env, true>,
   ) {
-    this.secureCookies = config.get('NODE_ENV', { infer: true }) === 'production';
+    this.cookieSettings = {
+      secure: config.get('NODE_ENV', { infer: true }) === 'production',
+      domain: config.get('COOKIE_DOMAIN', { infer: true }),
+    };
   }
 
   // Limité par IP sur ces deux routes seulement : 429 au-delà de AUTH_RATE_LIMIT
@@ -61,7 +64,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const { tokens, ...account } = await this.authService.registerTenant(dto);
-    setAuthCookies(res, tokens, this.secureCookies);
+    setAuthCookies(res, tokens, this.cookieSettings);
     return account;
   }
 
@@ -77,7 +80,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const { tokens, user } = await this.authService.registerCustomer(dto);
-    setAuthCookies(res, tokens, this.secureCookies);
+    setAuthCookies(res, tokens, this.cookieSettings);
     return { user };
   }
 
@@ -92,7 +95,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const { tokens, user } = await this.authService.login(dto);
-    setAuthCookies(res, tokens, this.secureCookies);
+    setAuthCookies(res, tokens, this.cookieSettings);
     return { user };
   }
 
@@ -105,7 +108,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const { tokens, user } = await this.authService.acceptInvitation(dto);
-    setAuthCookies(res, tokens, this.secureCookies);
+    setAuthCookies(res, tokens, this.cookieSettings);
     return { user };
   }
 
@@ -119,7 +122,7 @@ export class AuthController {
     }
 
     const tokens = await this.tokenService.rotateTokens(refreshToken);
-    setAuthCookies(res, tokens, this.secureCookies);
+    setAuthCookies(res, tokens, this.cookieSettings);
   }
 
   // Publique : la déconnexion doit fonctionner même si l'access token a expiré
@@ -131,7 +134,7 @@ export class AuthController {
     if (refreshToken) {
       await this.tokenService.revokeToken(refreshToken);
     }
-    clearAuthCookies(res, this.secureCookies);
+    clearAuthCookies(res, this.cookieSettings);
   }
 
   @Get('me')

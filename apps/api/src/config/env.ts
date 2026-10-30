@@ -29,6 +29,16 @@ export const envSchema = z.object({
   SMTP_URL: z.url(),
   // Adresse du front, pour les liens envoyés par e-mail
   WEB_URL: z.url(),
+  // Production : front et API sur deux sous-domaines du même site (`demo.exemple.org`,
+  // `api.demo.exemple.org`). Les cookies de session portent ce domaine pour que le serveur Next.js
+  // les reçoive aussi. Inutile en local : les cookies ignorent le port (localhost:3000 / 3001).
+  COOKIE_DOMAIN: z
+    .string()
+    .optional()
+    .transform((domain) => domain || undefined),
+  // Derrière un reverse proxy (Caddy en production) : l'IP du client, utilisée par le rate
+  // limiting, vient alors de X-Forwarded-For. À n'activer que si l'API n'est joignable que par lui.
+  TRUST_PROXY: z.stringbool().default(false),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -175,6 +175,8 @@ deskflow/
 ├── packages/
 │   ├── shared/           # schémas zod, types et machine à états des tickets, partagés api ↔ front
 │   └── tsconfig/         # configs TypeScript partagées (strict)
+├── deploy/               # serveur de démo : Caddyfile, modèle de .env, remise à zéro des données
+├── docs/                 # guide de déploiement, captures d'écran
 ├── docker/
 │   ├── dev.Dockerfile    # image de dev : Node 24 + pnpm
 │   ├── api.Dockerfile    # images de prod : api et worker (même image), migrations
@@ -183,6 +185,7 @@ deskflow/
 ├── bin/                  # wrappers Docker (pnpm, sh)
 ├── docker-compose.yml       # environnement de développement
 ├── docker-compose.prod.yml  # images de production, lancées en local
+├── docker-compose.deploy.yml # surcouche du serveur de démo : Caddy (HTTPS), aucun autre port exposé
 └── turbo.json
 ```
 
@@ -352,6 +355,16 @@ docker compose -f docker-compose.prod.yml run --rm migrate prisma db seed   # do
 
 Les mêmes adresses et comptes de démonstration fonctionnent. Les conteneurs et volumes sont distincts de ceux du dev (projet `deskflow-prod`).
 
+## Déploiement
+
+La démo en ligne tourne sur **une VM gratuite** (Oracle Cloud *Always Free*), avec les mêmes images et le même `docker-compose.prod.yml` qu'en local. Une surcouche (`docker-compose.deploy.yml`) y ajoute **Caddy**, qui obtient les certificats HTTPS et route chaque sous-domaine vers son service. Les autres ports ne sont pas exposés. L'adresse est un sous-domaine gratuit **DuckDNS** :
+
+- `DOMAIN` sert le front, et `api.DOMAIN` l'API et son WebSocket. Ce sont deux sous-domaines du **même site** : l'API pose ses cookies avec `Domain=DOMAIN` (`COOKIE_DOMAIN`), et le serveur Next.js les reçoit aussi ;
+- `s3.DOMAIN` sert les pièces jointes (URL présignées), et `mail.DOMAIN` la boîte Mailpit de la démo : les e-mails sont capturés, jamais envoyés ;
+- les secrets restent dans le `.env` du serveur, et la base est remise à zéro chaque nuit avec les données de démo (`deploy/reset-demo.sh`).
+
+Une VM plutôt que des services managés gratuits : ces derniers mettent l'API en veille, n'ont pas d'offre gratuite pour un worker, et leurs quotas Redis sont trop serrés pour BullMQ. Le comparatif, la mise en place pas à pas et les limites de l'offre gratuite sont dans **[docs/deployment.md](docs/deployment.md)**.
+
 ## Dépannage
 
 - **`port is already allocated`** : un autre projet utilise ce port → modifier la variable correspondante dans `.env` (ex. `MAILPIT_UI_PORT=8027`), puis `docker compose up -d`. Pour trouver le coupable : `docker ps --format '{{.Names}}\t{{.Ports}}' | grep 8026`.
@@ -366,7 +379,7 @@ Les mêmes adresses et comptes de démonstration fonctionnent. Les conteneurs et
 
 ## Pistes d'amélioration
 
-- **Cookies en production** : en dev, le front et l'API partagent `localhost`, donc les cookies posés par l'API sont visibles du serveur Next.js. En production, il faudra servir les deux sur le même site (ex. `app.exemple.com` et `api.exemple.com`, avec l'attribut `Domain` sur les cookies) ou faire passer l'API par le serveur Next.js.
+- **Déploiement continu** : les images sont construites sur le serveur à chaque mise à jour (`git pull && docker compose up -d --build`). La CI pourrait les publier (GitHub Container Registry, en multi-architecture pour l'ARM d'Oracle), et le serveur se contenterait de les télécharger.
 - **Recherche** : seuls les sujets sont indexés. Chercher aussi dans les messages demanderait un `tsvector` sur les messages (ou un moteur dédié si les volumes explosent). Pour un tenant avec énormément de résultats, la recherche passerait entièrement en SQL (filtres et pagination compris) plutôt que de transmettre la liste des identifiants trouvés.
 - **Objets des tickets supprimés** : supprimer un tenant (ou un ticket) efface ses pièces jointes en base par cascade, mais pas leurs fichiers dans le stockage. Le job de nettoyage pourrait aussi supprimer les objets que plus aucune ligne ne référence (parcours du bucket par préfixe `tenants/<id>/`).
 - **CORS du stockage** : SeaweedFS applique la règle du bucket aux objets (lecture), mais répond à toutes les origines au niveau du bucket lui-même, là où arrivent les envois. Ce n'est pas une faille, car chaque envoi exige un formulaire signé par l'API ; S3 ou R2 en production appliquent la règle partout.

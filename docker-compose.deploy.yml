@@ -1,0 +1,70 @@
+# Déploiement sur un serveur : les images de production, derrière Caddy (HTTPS automatique).
+#   docker compose -f docker-compose.prod.yml -f docker-compose.deploy.yml up -d --build
+# Seul Caddy est exposé (ports 80 et 443) : les autres services ne sont joignables que par le
+# réseau Docker. Les adresses publiques se déduisent toutes de DOMAIN (voir deploy/.env.example).
+
+x-public-urls: &public-urls
+  WEB_URL: https://${DOMAIN:?DOMAIN manquant dans .env}
+  S3_PUBLIC_URL: https://s3.${DOMAIN}
+  # Front sur DOMAIN, API sur api.DOMAIN : les cookies de session sont posés pour les deux
+  COOKIE_DOMAIN: ${DOMAIN}
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificats Let's Encrypt : conservés pour ne pas les redemander à chaque redémarrage
+      - caddy-data:/data
+    depends_on:
+      - web
+      - api
+
+  migrate:
+    environment: *public-urls
+
+  s3-setup:
+    # CORS du bucket : autorise l'origine publique du front
+    environment: *public-urls
+
+  api:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      <<: *public-urls
+      # Les requêtes arrivent par Caddy : l'IP du client est dans X-Forwarded-For
+      TRUST_PROXY: "true"
+
+  worker:
+    restart: unless-stopped
+    # Liens des e-mails vers le front
+    environment: *public-urls
+
+  web:
+    restart: unless-stopped
+    ports: !reset []
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
+
+  postgres:
+    restart: unless-stopped
+    ports: !reset []
+  redis:
+    restart: unless-stopped
+    ports: !reset []
+  s3:
+    restart: unless-stopped
+    ports: !reset []
+  mailpit:
+    restart: unless-stopped
+    ports: !reset []
+
+volumes:
+  caddy-data:

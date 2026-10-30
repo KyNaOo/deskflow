@@ -30,7 +30,18 @@ describe('validateEnv', () => {
       S3_SECRET_KEY: validEnv.S3_SECRET_KEY,
       SMTP_URL: validEnv.SMTP_URL,
       WEB_URL: validEnv.WEB_URL,
+      TRUST_PROXY: false,
     });
+  });
+
+  it('lit les réglages de production derrière un reverse proxy', () => {
+    const env = validateEnv({ ...validEnv, COOKIE_DOMAIN: 'demo.duckdns.org', TRUST_PROXY: 'true' });
+
+    expect(env).toMatchObject({ COOKIE_DOMAIN: 'demo.duckdns.org', TRUST_PROXY: true });
+  });
+
+  it('ignore un COOKIE_DOMAIN vide (variable présente mais non renseignée)', () => {
+    expect(validateEnv({ ...validEnv, COOKIE_DOMAIN: '' }).COOKIE_DOMAIN).toBeUndefined();
   });
 
   it('convertit PORT en nombre', () => {

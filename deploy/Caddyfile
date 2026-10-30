@@ -1,0 +1,23 @@
+# Reverse proxy de la démo : un certificat Let's Encrypt par adresse, obtenu et renouvelé par Caddy.
+# Le front et l'API sont deux sous-domaines du même site (DOMAIN) : voir COOKIE_DOMAIN.
+
+{$DOMAIN} {
+	reverse_proxy web:3000
+}
+
+# HTTP et WebSocket (Socket.io) passent par la même adresse
+api.{$DOMAIN} {
+	reverse_proxy api:3001
+}
+
+# Envois et téléchargements des pièces jointes par URL présignée. Caddy transmet l'en-tête Host
+# d'origine : celui sur lequel l'URL a été signée.
+s3.{$DOMAIN} {
+	reverse_proxy s3:8333
+}
+
+# Boîte mail de la démo : Mailpit capture les e-mails (invitations, réponses) sans jamais les
+# envoyer, et les affiche ici.
+mail.{$DOMAIN} {
+	reverse_proxy mailpit:8025
+}
