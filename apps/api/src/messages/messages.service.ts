@@ -1,3 +1,4 @@
+import type { CreateMessageInput } from '@deskflow/shared';
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { attachmentSelect, AttachmentsService } from '../attachments/attachments.service.js';
@@ -10,7 +11,6 @@ import { RealtimeService } from '../realtime/realtime.service.js';
 import { ticketAccessFilter } from '../tickets/ticket-access.js';
 import { ticketSelect } from '../tickets/ticket-select.js';
 import { automaticTransition } from './automatic-transition.js';
-import { CreateMessageDto } from './dto/create-message.dto.js';
 import { replyEmail } from './reply-email.js';
 
 const messageSelect = {
@@ -67,7 +67,7 @@ export class MessagesService {
     });
   }
 
-  async create(author: AuthenticatedUser, ticketNumber: number, dto: CreateMessageDto) {
+  async create(author: AuthenticatedUser, ticketNumber: number, dto: CreateMessageInput) {
     const isCustomer = author.role === Role.CUSTOMER;
     const isInternalNote = dto.isInternalNote ?? false;
     if (isCustomer && isInternalNote) {

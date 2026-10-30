@@ -1,4 +1,14 @@
 import {
+  acceptInvitationSchema,
+  loginSchema,
+  registerCustomerSchema,
+  registerTenantSchema,
+  type AcceptInvitationInput,
+  type LoginInput,
+  type RegisterCustomerInput,
+  type RegisterTenantInput,
+} from '@deskflow/shared';
+import {
   Body,
   Controller,
   Get,
@@ -10,6 +20,12 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiConflictResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiTooManyRequestsResponse,
+} from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -20,10 +36,6 @@ import { AuthService } from './auth.service.js';
 import type { AuthenticatedUser } from './authenticated-user.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
-import { AcceptInvitationDto } from './dto/accept-invitation.dto.js';
-import { LoginDto } from './dto/login.dto.js';
-import { RegisterCustomerDto } from './dto/register-customer.dto.js';
-import { RegisterTenantDto } from './dto/register-tenant.dto.js';
 import { TokenService } from './token.service.js';
 
 @Controller('auth')
@@ -42,8 +54,10 @@ export class AuthController {
   @Public()
   @UseGuards(ThrottlerGuard)
   @Post('register-tenant')
+  @ApiTooManyRequestsResponse({ description: 'Trop de tentatives depuis cette adresse IP' })
+  @ApiConflictResponse({ description: 'Slug déjà utilisé par une autre organisation' })
   async registerTenant(
-    @Body() dto: RegisterTenantDto,
+    @Body({ schema: registerTenantSchema }) dto: RegisterTenantInput,
     @Res({ passthrough: true }) res: Response,
   ) {
     const { tokens, ...account } = await this.authService.registerTenant(dto);
@@ -55,8 +69,11 @@ export class AuthController {
   @Public()
   @UseGuards(ThrottlerGuard)
   @Post('register-customer')
+  @ApiTooManyRequestsResponse({ description: 'Trop de tentatives depuis cette adresse IP' })
+  @ApiNotFoundResponse({ description: 'Organisation introuvable' })
+  @ApiConflictResponse({ description: 'Un compte existe déjà avec cet e-mail dans l’organisation' })
   async registerCustomer(
-    @Body() dto: RegisterCustomerDto,
+    @Body({ schema: registerCustomerSchema }) dto: RegisterCustomerInput,
     @Res({ passthrough: true }) res: Response,
   ) {
     const { tokens, user } = await this.authService.registerCustomer(dto);
@@ -67,8 +84,13 @@ export class AuthController {
   @Public()
   @UseGuards(ThrottlerGuard)
   @Post('login')
+  @ApiOkResponse({ description: 'Connecté : cookies de session posés' })
+  @ApiTooManyRequestsResponse({ description: 'Trop de tentatives depuis cette adresse IP' })
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body({ schema: loginSchema }) dto: LoginInput,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const { tokens, user } = await this.authService.login(dto);
     setAuthCookies(res, tokens, this.secureCookies);
     return { user };
@@ -77,8 +99,9 @@ export class AuthController {
   // Pas de rate limiting : le jeton (256 bits aléatoires) ne se devine pas
   @Public()
   @Post('accept-invitation')
+  @ApiConflictResponse({ description: 'E-mail déjà membre de l’organisation' })
   async acceptInvitation(
-    @Body() dto: AcceptInvitationDto,
+    @Body({ schema: acceptInvitationSchema }) dto: AcceptInvitationInput,
     @Res({ passthrough: true }) res: Response,
   ) {
     const { tokens, user } = await this.authService.acceptInvitation(dto);

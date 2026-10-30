@@ -1,17 +1,17 @@
 import { BadRequestException, type ArgumentMetadata } from '@nestjs/common';
 import { z } from 'zod';
-import { createZodDto, ZodValidationPipe } from './zod-validation.js';
+import { ZodValidationPipe } from './zod-validation.js';
 
-class SignupDto extends createZodDto(
-  z.strictObject({ email: z.string().trim().toLowerCase().pipe(z.email('E-mail invalide')) }),
-) {}
+const signupSchema = z.strictObject({
+  email: z.string().trim().toLowerCase().pipe(z.email('E-mail invalide')),
+});
 
 const pipe = new ZodValidationPipe();
-const body = (metatype?: ArgumentMetadata['metatype']): ArgumentMetadata => ({ type: 'body', metatype });
+const body = (schema?: ArgumentMetadata['schema']): ArgumentMetadata => ({ type: 'body', schema });
 
 function validationMessages(value: unknown): unknown {
   try {
-    pipe.transform(value, body(SignupDto));
+    pipe.transform(value, body(signupSchema));
   } catch (error) {
     expect(error).toBeInstanceOf(BadRequestException);
     return (error as BadRequestException).getResponse();
@@ -21,7 +21,7 @@ function validationMessages(value: unknown): unknown {
 
 describe('ZodValidationPipe', () => {
   it('renvoie la valeur transformée par le schéma', () => {
-    expect(pipe.transform({ email: ' Bob@Acme.TEST ' }, body(SignupDto))).toEqual({
+    expect(pipe.transform({ email: ' Bob@Acme.TEST ' }, body(signupSchema))).toEqual({
       email: 'bob@acme.test',
     });
   });
@@ -39,7 +39,6 @@ describe('ZodValidationPipe', () => {
   });
 
   it('laisse passer un paramètre sans schéma (ex. id validé par ParseUUIDPipe)', () => {
-    expect(pipe.transform('raw', body(String))).toBe('raw');
     expect(pipe.transform('raw', body(undefined))).toBe('raw');
   });
 });

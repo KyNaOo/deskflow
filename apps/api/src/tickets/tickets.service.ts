@@ -1,3 +1,4 @@
+import type { CreateTicketInput, ListTicketsQuery, UpdateTicketInput } from '@deskflow/shared';
 import {
   BadRequestException,
   ConflictException,
@@ -10,9 +11,6 @@ import { TenantContext } from '../common/tenant-context.js';
 import { type Prisma, Role } from '../generated/prisma/client.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
-import { CreateTicketDto } from './dto/create-ticket.dto.js';
-import { ListTicketsQueryDto } from './dto/list-tickets-query.dto.js';
-import { UpdateTicketDto } from './dto/update-ticket.dto.js';
 import { afterCursor, decodeCursor, encodeCursor, TICKET_LIST_ORDER } from './ticket-cursor.js';
 import { ticketAccessFilter } from './ticket-access.js';
 import { ticketSelect } from './ticket-select.js';
@@ -27,7 +25,7 @@ export class TicketsService {
   ) {}
 
   /** Ouvre un ticket et enregistre sa description comme premier message (les deux, ou rien). */
-  async create(author: AuthenticatedUser, dto: CreateTicketDto) {
+  async create(author: AuthenticatedUser, dto: CreateTicketInput) {
     const customerId = await this.resolveCustomerId(author, dto.customerId);
     const tenantId = this.tenantContext.tenantId;
 
@@ -63,7 +61,7 @@ export class TicketsService {
    * Liste filtrée et paginée par curseur. Un client ne voit que ses propres tickets : c'est
    * aussi la liste « Mes tickets » du portail.
    */
-  async list(reader: AuthenticatedUser, query: ListTicketsQueryDto) {
+  async list(reader: AuthenticatedUser, query: ListTicketsQuery) {
     const filters: Prisma.TicketWhereInput[] = [
       { status: query.status, priority: query.priority },
       ticketAccessFilter(reader),
@@ -94,7 +92,7 @@ export class TicketsService {
   }
 
   /** Statut (via la machine à états), priorité et assignation, modifiés par un agent. */
-  async update(number: number, dto: UpdateTicketDto) {
+  async update(number: number, dto: UpdateTicketInput) {
     const ticket = await this.prisma.ticket.findFirst({
       where: { number },
       select: { id: true, status: true },

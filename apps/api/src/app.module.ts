@@ -30,7 +30,7 @@ import { UsersModule } from './users/users.module.js';
   providers: [
     // Déclaré ici plutôt que dans main.ts pour s'appliquer aussi aux tests e2e
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
-    // Valide les body et query typés par un DTO zod (schémas de @deskflow/shared)
+    // Valide les body et query qui déclarent un schéma zod (`@Body({ schema })`, @deskflow/shared)
     { provide: APP_PIPE, useClass: ZodValidationPipe },
   ],
 })

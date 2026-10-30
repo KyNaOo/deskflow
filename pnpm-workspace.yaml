@@ -4,6 +4,7 @@ packages:
 
 # pnpm bloque les scripts d'installation par défaut : on autorise au cas par cas
 allowBuilds:
+  "@scarf/scarf": false # télémétrie de swagger-ui-dist (@nestjs/swagger)
   "@prisma/engines": true
   esbuild: true
   msgpackr-extract: false # accélération native facultative de BullMQ

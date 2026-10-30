@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
+import { setupOpenApi } from './common/openapi.js';
 import type { Env } from './config/env.js';
 import { RealtimeIoAdapter } from './realtime/realtime-io.adapter.js';
 
@@ -18,6 +19,9 @@ async function bootstrap() {
     credentials: true,
     exposedHeaders: ['X-Request-Id'],
   });
+
+  // Sans secret : servie aussi en production, mais en lecture seule
+  setupOpenApi(app, { readOnly: config.get('NODE_ENV', { infer: true }) === 'production' });
 
   const realtimeAdapter = new RealtimeIoAdapter(app);
   await realtimeAdapter.connectToRedis();

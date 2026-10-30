@@ -1,3 +1,4 @@
+import type { InviteUserInput } from '@deskflow/shared';
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { publicUserSelect } from '../auth/public-user.js';
@@ -6,7 +7,6 @@ import { TenantContext } from '../common/tenant-context.js';
 import type { Env } from '../config/env.js';
 import { EmailsService } from '../emails/emails.service.js';
 import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
-import { InviteUserDto } from './dto/invite-user.dto.js';
 import { invitationEmail } from './invitation-email.js';
 
 const INVITATION_TTL_MS = 48 * 60 * 60 * 1000;
@@ -43,7 +43,7 @@ export class UsersService {
   }
 
   /** Envoie par e-mail un lien à usage unique pour rejoindre l'organisation (48 h). */
-  async invite(dto: InviteUserDto) {
+  async invite(dto: InviteUserInput) {
     const member = await this.prisma.user.findFirst({ where: { email: dto.email } });
     if (member) {
       throw new ConflictException('Cet e-mail est déjà membre de l’organisation');

@@ -1,7 +1,8 @@
+import { inviteUserSchema, type InviteUserInput } from '@deskflow/shared';
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { ApiConflictResponse } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { Role } from '../generated/prisma/client.js';
-import { InviteUserDto } from './dto/invite-user.dto.js';
 import { UsersService } from './users.service.js';
 
 @Roles(Role.ADMIN, Role.AGENT)
@@ -21,7 +22,8 @@ export class UsersController {
 
   @Roles(Role.ADMIN)
   @Post('invite')
-  invite(@Body() dto: InviteUserDto) {
+  @ApiConflictResponse({ description: 'E-mail déjà membre de l’organisation' })
+  invite(@Body({ schema: inviteUserSchema }) dto: InviteUserInput) {
     return this.usersService.invite(dto);
   }
 }

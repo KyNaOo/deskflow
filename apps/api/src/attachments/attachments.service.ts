@@ -1,3 +1,4 @@
+import type { CreateAttachmentInput } from '@deskflow/shared';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { TenantContext } from '../common/tenant-context.js';
@@ -6,7 +7,6 @@ import { TENANT_PRISMA, type TenantPrisma } from '../prisma/tenant-prisma.js';
 import { attachmentKey } from '../storage/storage-keys.js';
 import { StorageService } from '../storage/storage.service.js';
 import { ticketAccessFilter } from '../tickets/ticket-access.js';
-import { CreateAttachmentDto } from './dto/create-attachment.dto.js';
 
 /** Champs d'une pièce jointe renvoyés par l'API (jamais la clé de stockage). */
 export const attachmentSelect = {
@@ -32,7 +32,7 @@ export class AttachmentsService {
    * Enregistre la pièce jointe (sans message pour l'instant) et signe le formulaire d'envoi.
    * Type et taille sont validés ici, puis imposés par le stockage via les conditions signées.
    */
-  async create(uploader: AuthenticatedUser, ticketNumber: number, dto: CreateAttachmentDto) {
+  async create(uploader: AuthenticatedUser, ticketNumber: number, dto: CreateAttachmentInput) {
     const ticket = await this.findTicket(uploader, ticketNumber);
     if (ticket.status === TicketStatus.CLOSED) {
       throw new ConflictException('Ce ticket est clos : impossible d’y joindre un fichier');

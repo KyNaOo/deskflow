@@ -4,7 +4,13 @@ import { z } from 'zod';
 // z.email().trim() validerait le format avant de retirer les espaces.
 
 /** Identifiants insensibles à la casse (e-mail, slug) : « Alice@Acme.test » = « alice@acme.test » */
-export const email = z.string().trim().toLowerCase().pipe(z.email('Adresse e-mail invalide'));
+export const email = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email('Adresse e-mail invalide'))
+  // La documentation OpenAPI décrit l'entrée du pipe (une simple chaîne) : on y précise le format
+  .meta({ format: 'email' });
 
 export const requiredText = (max: number) =>
   z.string().trim().min(1, 'Champ obligatoire').max(max, `${max} caractères maximum`);

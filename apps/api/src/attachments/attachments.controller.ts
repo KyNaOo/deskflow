@@ -1,9 +1,10 @@
+import { createAttachmentSchema, type CreateAttachmentInput } from '@deskflow/shared';
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Redirect } from '@nestjs/common';
+import { ApiConflictResponse } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { TicketNumberPipe } from '../tickets/ticket-number.pipe.js';
 import { AttachmentsService } from './attachments.service.js';
-import { CreateAttachmentDto } from './dto/create-attachment.dto.js';
 
 /** Pièces jointes d'un ticket : son client et les agents de l'organisation (sinon 404). */
 @Controller('tickets/:number/attachments')
@@ -12,10 +13,11 @@ export class AttachmentsController {
 
   /** Signe l'envoi : le navigateur envoie ensuite le fichier directement au stockage. */
   @Post()
+  @ApiConflictResponse({ description: 'Ticket clos' })
   create(
     @CurrentUser() user: AuthenticatedUser,
     @Param('number', TicketNumberPipe) number: number,
-    @Body() dto: CreateAttachmentDto,
+    @Body({ schema: createAttachmentSchema }) dto: CreateAttachmentInput,
   ) {
     return this.attachmentsService.create(user, number, dto);
   }

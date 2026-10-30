@@ -4,6 +4,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { Logger } from 'nestjs-pino';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
+import { setupOpenApi } from '../../src/common/openapi.js';
 import { RealtimeIoAdapter } from '../../src/realtime/realtime-io.adapter.js';
 
 interface TestAppOptions {
@@ -28,6 +29,7 @@ export async function createTestApp({
   });
   // Même logger qu'en production (muet pendant les tests, voir loggerConfig)
   app.useLogger(app.get(Logger));
+  setupOpenApi(app, { readOnly: false });
   const realtimeAdapter = new RealtimeIoAdapter(app);
   await realtimeAdapter.connectToRedis();
   app.useWebSocketAdapter(realtimeAdapter);

@@ -1,3 +1,9 @@
+import type {
+  AcceptInvitationInput,
+  LoginInput,
+  RegisterCustomerInput,
+  RegisterTenantInput,
+} from '@deskflow/shared';
 import {
   BadRequestException,
   ConflictException,
@@ -9,10 +15,6 @@ import { hash, verify } from '@node-rs/argon2';
 import { Role } from '../generated/prisma/client.js';
 import { isUniqueConstraintViolation } from '../prisma/prisma-errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { AcceptInvitationDto } from './dto/accept-invitation.dto.js';
-import { LoginDto } from './dto/login.dto.js';
-import { RegisterCustomerDto } from './dto/register-customer.dto.js';
-import { RegisterTenantDto } from './dto/register-tenant.dto.js';
 import { publicUserSelect } from './public-user.js';
 import { hashSecretToken } from './secret-token.js';
 import { TokenService } from './token.service.js';
@@ -31,7 +33,7 @@ export class AuthService {
   ) {}
 
   /** Crée une organisation et son premier administrateur (les deux, ou aucun), puis le connecte. */
-  async registerTenant(dto: RegisterTenantDto) {
+  async registerTenant(dto: RegisterTenantInput) {
     const passwordHash = await hash(dto.password);
 
     let account;
@@ -71,7 +73,7 @@ export class AuthService {
    * Inscription d'un client depuis le portail de son organisation, puis connexion.
    * Le rôle est fixé ici : jamais lu depuis la requête.
    */
-  async registerCustomer(dto: RegisterCustomerDto) {
+  async registerCustomer(dto: RegisterCustomerInput) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { slug: dto.tenantSlug },
       select: { id: true },
@@ -103,7 +105,7 @@ export class AuthService {
     return { user, tokens };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginInput) {
     const user = await this.prisma.user.findFirst({
       where: { email: dto.email, tenant: { slug: dto.tenantSlug } },
       select: { ...publicUserSelect, passwordHash: true },
@@ -128,7 +130,7 @@ export class AuthService {
    * Crée le compte d'un invité dans le tenant de l'invitation, puis le connecte.
    * Client Prisma non filtré : route publique, le tenant n'est connu que par l'invitation.
    */
-  async acceptInvitation(dto: AcceptInvitationDto) {
+  async acceptInvitation(dto: AcceptInvitationInput) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { tokenHash: hashSecretToken(dto.token) },
     });
